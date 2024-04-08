@@ -12,6 +12,23 @@ know you wont need it, but for functions like reserve where it is always needed
 thinking of just making all allocator arguments optional but it doesn't make
 sense in some cases but might make the api simplier.
 
+* Extend to small vec
+It should be possible to use this for u8 numbers already if you just ignore the
+word string all over the place. It should also be possible to wrap this in a
+type function and have it use u16 or other, but it becomes much more limited and
+I think there are better ways to do small vecs. Usually you don't need to spill
+characteristics and you know if you will have large or small vectors at compile
+time, and if you don't it is usually easier to manage than strings. I'd be more
+include to just write a small vec implementation with no spillage.
+
+* Usage without the union String indirection
+Often you will now if you have a small or large string. for example, if you use
+this as a hash key and know your key length. you can use SmallString and
+LargeString directly if you want or you can still use String and call into
+String.small or String.large if you already know. There is also some isSmall and
+isLargeStr predicates to help with that. String.lowbyte is also there to help
+determine the union type.
+
 * TODO
 - [X] make allocator optional
 - [ ] add basic string search
@@ -19,7 +36,9 @@ sense in some cases but might make the api simplier.
 - [ ] add substring spans and indexing
 - [X] reserve, clear
 - [ ] basic forward iterator
-- [ ] push back, set, delete
+- [ ] push back
+- [ ] set
+- [ ] delete, delete range
 - [X] heap to stack
 - [ ] find, find iter
 - [ ] compare, copy substr
