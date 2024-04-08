@@ -1,0 +1,9 @@
+* Introduction
+
+This is a simple string library that is more a proof of concept than anything else. It includes the on stack small string allocation and you shoud be able to return those stack objects fine by copy. the heap version should also be fine by copy. Presently any function that can spill to the heap needs to be passed an allocator. I'm not happy with the api and keep trying to simplify it. I plan to make the allocator argument optional and just error if an allocation needs to be done but was passed null. It should make using the classes a little easier because often you know you don't need to allocate especially if you did it up front.
+
+* TODO
+- [ ] make allocator optional
+- [ ] add basic string search
+- [ ] add basic string splitting by iterator
+- [ ] add substring spans and indexing
