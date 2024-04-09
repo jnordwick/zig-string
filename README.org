@@ -36,8 +36,8 @@ determine the union type.
 - [ ] add substring spans and indexing
 - [X] reserve, clear
 - [ ] basic forward iterator
-- [ ] push back
-- [ ] set
+- [X] push back, append1
+- [X] set, set_range
 - [ ] delete, delete range
 - [X] heap to stack
 - [ ] find, find iter

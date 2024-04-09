@@ -20,8 +20,7 @@ comptime {
 // --- Tests ---
 
 const tt = std.testing;
-var testalloc = std.testing.allocator;
-var talloc = &testalloc;
+const talloc = &tt.allocator;
 
 test "small copy" {
     const h = "hello";
@@ -69,4 +68,22 @@ test "small into large into small" {
     try tt.expect(ss.isSmallStr());
     try tt.expectEqual(@as(u64, 5), ss.length());
     try tt.expectEqualSlices(u8, h[0..], ss.to_slice());
+}
+
+test "delete range" {
+    const h = "hello";
+    var ss = try String.init_copy(h, talloc);
+
+    const h1 = "hllo";
+    const h2 = "ho";
+    const h3 = "h";
+
+    ss.delete1(100);
+    try tt.expectEqualSlices(u8, h[0..], ss.to_slice());
+    ss.delete1(1);
+    try tt.expectEqualSlices(u8, h1[0..], ss.to_slice());
+    ss.delete_range(1, 2);
+    try tt.expectEqualSlices(u8, h2[0..], ss.to_slice());
+    ss.delete_range(1, 5);
+    try tt.expectEqualSlices(u8, h3[0..], ss.to_slice());
 }

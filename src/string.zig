@@ -33,7 +33,7 @@ pub const String = extern union {
     /// str: the slice to copy.
     /// alloc: can be null if you know the string will fit in a
     /// SmallString and the allocator will not be needed.
-    pub fn init_copy(str: []const u8, alloc: ?*Allocator) !This {
+    pub fn init_copy(str: []const u8, alloc: ?*const Allocator) !This {
         if (str.len <= SmallString.buf_size) {
             return .{ .small = SmallString.init_copy(str) };
         } else {
@@ -47,7 +47,7 @@ pub const String = extern union {
 
     /// If not already a LargeString, will convert this to one with the
     /// same capacity as the strig length.
-    pub fn into_large(this: *This, alloc: *Allocator) !void {
+    pub fn into_large(this: *This, alloc: *const Allocator) !void {
         if (this.isSmallStr()) {
             var large_str = try LargeString.from_small(&this.small, 0, alloc);
             this.large = large_str;
@@ -59,7 +59,7 @@ pub const String = extern union {
     /// in a small string StringError.TooLargeToConvert will be returned.
     /// alloc: if null will not attempt to free the buffer. Useful for arena
     /// or stack allocators that do not need to be freed.
-    pub fn into_small(this: *This, alloc: ?*Allocator) !void {
+    pub fn into_small(this: *This, alloc: ?*const Allocator) !void {
         if (this.isLargeStr()) {
             const len: u64 = this.large.len;
             if (len >= SmallString.buf_size)
@@ -89,11 +89,40 @@ pub const String = extern union {
         return if (this.isSmallStr()) this.small.length() else this.large.len;
     }
 
+    pub fn reserve_more(this: *This, more: u64, alloc: ?*Allocator) !void {
+        if (this.isSmallString()) {
+            const len = this.small.length() + more;
+            if (len > SmallString.buf_size) {
+                if (alloc) |a| {
+                    var large_str = try LargeString.from_small(this, len * 2, a);
+                    this.large = large_str;
+                } else {
+                    return StringError.NoAllocator;
+                }
+            }
+        } else {
+            const len = this.large.len + more;
+            if (len > this.large.cap) {
+                try this.large.reserve(len * 2, alloc);
+            }
+        }
+    }
+
+    pub fn push_back(this: *This, x: u8, alloc: ?*Allocator) !void {
+        try this.reserve_more(@sizeOf(x), alloc);
+        if (this.isSmallStr()) this.small.push_back(x) else this.large.push_back_noalloc();
+    }
+
+    pub fn append1(this: *This, x: u8, count: u64, alloc: ?*Allocator) !void {
+        try this.reserve_more(count, alloc);
+        if (this.isSmallString()) this.small.append1(x, count) else this.large.append1_noalloc(x, count);
+    }
+
     /// appends the string to the current string spilling to a LargeString if needed
     /// other: other string to append
     /// alloc: can be left null if you know you will not need to grow the region or
     /// convert to a LargeString
-    pub fn append(this: *This, other: *const String, alloc: ?*Allocator) !void {
+    pub fn append(this: *This, other: *const String, alloc: ?*const Allocator) !void {
         return this.append_slice(other.to_const_slice(), alloc);
     }
 
@@ -101,21 +130,9 @@ pub const String = extern union {
     /// other: other string to append
     /// alloc: can be left null if you know you will not need to grow the region or
     /// convert to a LargeString
-    pub fn append_slice(this: *This, other: []const u8, alloc: ?*Allocator) !void {
-        if (this.isSmallString()) {
-            const len = this.small.length() + other.len;
-            if (len <= SmallString.buf_size) {} else {
-                if (alloc) |a| {
-                    var large_str = try LargeString.from_small(this, len * 2, a);
-                    large_str.append_noalloc(other);
-                    this.large = large_str;
-                } else {
-                    return StringError.NoAllocator;
-                }
-            }
-        } else {
-            this.large.append(other, alloc);
-        }
+    pub fn append_slice(this: *This, other: []const u8, alloc: ?*const Allocator) !void {
+        try this.reserve_more(other.len, alloc);
+        if (this.isSmallString()) this.small.append(other) else this.large.append_noalloc(other);
     }
 
     /// sets the length to zero but leaves the rest of the struct for reuse
@@ -125,12 +142,45 @@ pub const String = extern union {
 
     /// ensures at least new_capacity total cap, but will not shribnk the cap.
     /// will spill to large string if needed.
-    pub fn reserve(this: *This, new_cap: u64, alloc: *Allocator) !void {
+    pub fn reserve(this: *This, new_cap: u64, alloc: ?*const Allocator) !void {
         if (this.isLargeStr()) {
             this.large.reserve(new_cap, alloc);
         } else if (new_cap > SmallString.buf_size) {
             var str = try LargeString.from_small(&this.small, new_cap, alloc);
             this.large = str;
         }
+    }
+
+    /// sets the index of buffer. no checks are done in releae builds
+    /// index: should be less than length, but is not checked in release builds
+    pub fn set(this: *This, index: u64, val: u8) void {
+        if (this.isSmallStr()) this.small.set(index, val) else this.large.set(index, val);
+    }
+
+    /// sets the index of buffer. no checks are done in releae builds
+    /// index: should be less than length, but is not checked in release builds
+    /// sets a range of values. no checks are done in release builds
+    /// offset: the beginning offset
+    /// vals: offset + vals.len should not extend past length but not checked
+    /// in release builds
+    pub fn set_range(this: *This, offset: u64, vals: []u8) void {
+        if (this.isSmallStr()) this.small.set_range(offset, vals) else this.large.set_range(offset, vals);
+    }
+
+    /// delete a single characters. will shift all other characters down. deleting
+    /// from the end of the string doesn't require any shifting.
+    /// index: the character to remove
+    pub fn delete1(this: *This, index: u64) void {
+        if (this.isSmallStr()) this.small.delete1(index) else this.large.delete1(index);
+    }
+
+    /// delete a range of characters. will shift all other characters down. deleting
+    /// from the end of the string doesn't require any shifting. This will not cause
+    /// any deallocations or convert a large string to a small string.
+    /// offset: start of the range to delete. If past length nothing will be deleted
+    /// len: how many characters to delete. If this extends the range past len only
+    /// characters up to the length of the string will be deleted.
+    pub fn delete_range(this: *This, offset: u64, len: u64) void {
+        if (this.isSmallStr()) this.small.delete_range(offset, len) else this.large.delete_range(offset, len);
     }
 };
