@@ -5,6 +5,15 @@ be able to return those stack objects fine by copy. the large string heap
 version should also be fine by copy. I'm not happy with the api and keep trying
 to simplify it.
 
+Alot of basic functionality, such as looping over the contents of the string, it
+is easier to just get a slice from the string and use that so things like basic
+iterators are not implemented, and I feel would just clutter the API, be
+slower, and be more places for bugs.
+
+I tried to use the std.mem functions where possible but sometimes they were just
+too slow or didn't fit the API well. In some cases I probably don't know they
+even exist. Std is just a mess -- I hope there are plans to clean it up.
+
 * Allocations
 Some of allocator arguments are optional for cases where you
 know you wont need it, but for functions like reserve where it is always needed
@@ -34,15 +43,22 @@ determine the union type.
 - [ ] add basic string search
 - [ ] add basic string splitting by iterator
 - [X] subslice and const_subslice
-- [ ] copying substring
+- [X] copying substring
 - [X] reserve, clear
-- [ ] basic forward iterator
 - [X] push back, append1
 - [X] set, set_range
 - [X] delete, delete range
 - [X] heap to stack
 - [ ] find, find iter
 - [ ] compare
-- [ ] map iter
-- [ ] realloc should first attempt to extend region
+- [X] realloc should first attempt to extend region
 - [X] document
+
+* Everything is a slice?
+The API might change somewhat substantially by making any function that takes in
+a string or null terminated string just take a slice instead. This should
+simplify the API a little.
+
+* Get rid of the allocator indirection?
+Would making alloc arguments be anytype help with performance? You just so
+rarely see the allocator chosen dynamically that it seems unnecessary.

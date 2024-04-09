@@ -74,6 +74,15 @@ pub const String = extern union {
         }
     }
 
+    pub fn substr(this: *const This, offset: u64, len: u64, alloc: ?*const Allocator) String {
+        const sub: []u8 = this.const_subslice(offset, len);
+        if (len <= SmallString.buf_size) {
+            return .{ .small = SmallString.init_copy(sub) };
+        } else {
+            return .{ .large = LargeString.init_copy(sub, 0, alloc) };
+        }
+    }
+
     /// returns a subslice of the string. if the string is ever converted from small to large or has to be
     /// reallocated to a different memory location, this slice will be invaid.
     pub fn subslice(this: *This, offset: u64, len: u64) []u8 {

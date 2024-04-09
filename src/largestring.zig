@@ -26,6 +26,12 @@ pub const LargeString = extern struct {
     }
 
     fn realloc_data(this: *This, new_cap: u64, alloc: *const Allocator) !void {
+        const alloc_slice = this.data[0..this.cap];
+        const did_resize = alloc.resize(alloc_slice, new_cap);
+        if (did_resize) {
+            this.cap = new_cap;
+            return;
+        }
         const new_data = try alloc_data(new_cap, alloc);
         @memcpy(&new_data, this.to_slice());
         this.deinit(alloc);
