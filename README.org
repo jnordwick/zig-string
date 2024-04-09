@@ -40,8 +40,6 @@ determine the union type.
 
 * TODO
 - [X] make allocator optional
-- [ ] add basic string search
-- [ ] add basic string splitting by iterator
 - [X] subslice and const_subslice
 - [X] copying substring
 - [X] reserve, clear
@@ -49,10 +47,17 @@ determine the union type.
 - [X] set, set_range
 - [X] delete, delete range
 - [X] heap to stack
-- [ ] find, find iter
-- [ ] compare
 - [X] realloc should first attempt to extend region
 - [X] document
+
+* Stuff already in std.mem?
+I'm tempted to reimplement some of stuff in std.mem or at least
+specialize it a little better. Some of the code is okay an some of it kind of
+sucks, but it can easily be used by grabbing the slice and calling it on that
+most of the time. There are some instances ike where you want to split the
+string on multiple indexes where that doesn't work as well anymore though. I'll
+add them to here as needed and I think leave the called to call the std.mem
+functions, i think -- still not sure on it.
 
 * Everything is a slice?
 The API might change somewhat substantially by making any function that takes in
