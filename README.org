@@ -33,16 +33,16 @@ determine the union type.
 - [X] make allocator optional
 - [ ] add basic string search
 - [ ] add basic string splitting by iterator
-- [ ] add substring spans and indexing
+- [X] subslice and const_subslice
+- [ ] copying substring
 - [X] reserve, clear
 - [ ] basic forward iterator
 - [X] push back, append1
 - [X] set, set_range
-- [ ] delete, delete range
+- [X] delete, delete range
 - [X] heap to stack
 - [ ] find, find iter
-- [ ] compare, copy substr
+- [ ] compare
 - [ ] map iter
-- [ ] replace
 - [ ] realloc should first attempt to extend region
 - [X] document

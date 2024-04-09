@@ -74,12 +74,26 @@ pub const String = extern union {
         }
     }
 
-    /// return the string as a slice
+    /// returns a subslice of the string. if the string is ever converted from small to large or has to be
+    /// reallocated to a different memory location, this slice will be invaid.
+    pub fn subslice(this: *This, offset: u64, len: u64) []u8 {
+        return if (this.isSmallStr()) this.small.subslice(offset, len) else this.large.subslice(offset, len);
+    }
+
+    /// returns a const subslice of the string. if the string is ever converted from small to large or has to be
+    /// reallocated to a different memory location, this slice will be invaid.
+    pub fn const_subslice(this: *const This, offset: u64, len: u64) []const u8 {
+        return if (this.isSmallStr()) this.small.const_subslice(offset, len) else this.large.const_subslice(offset, len);
+    }
+
+    /// return the string as a slice. if the string is ever converted from small to large or has to be
+    /// reallocated to a different memory location, this slice will be invaid.
     pub fn to_slice(this: *This) []u8 {
         return if (this.isSmallStr()) this.small.to_slice() else this.large.to_slice();
     }
 
-    /// return the string as a const slice
+    /// return the string as a const slice. if the string is ever converted from small to large or has to be
+    /// reallocated to a different memory location, this slice will be invaid.
     pub fn to_const_slice(this: *This) []const u8 {
         return if (this.isSmallStr()) this.small.to_const_slice() else this.large.to_const_slice();
     }
@@ -151,20 +165,30 @@ pub const String = extern union {
         }
     }
 
-    /// sets the index of buffer. no checks are done in releae builds
-    /// index: should be less than length, but is not checked in release builds
-    pub fn set(this: *This, index: u64, val: u8) void {
-        if (this.isSmallStr()) this.small.set(index, val) else this.large.set(index, val);
+    /// Returns byte at position
+    /// index: no check is done in non-safe release modes
+    pub fn get1(this: *const This, index: u64) u8 {
+        return if (this.isSmallStr()) this.small.get(index) else this.large.get(index);
     }
 
-    /// sets the index of buffer. no checks are done in releae builds
+    /// replaces part of the string with the values from the other string
     /// index: should be less than length, but is not checked in release builds
+    pub fn set(this: *This, offset: u64, other: *const String) void {
+        return this.set_range(offset, other.to_const_slice());
+    }
+
     /// sets a range of values. no checks are done in release builds
     /// offset: the beginning offset
     /// vals: offset + vals.len should not extend past length but not checked
     /// in release builds
-    pub fn set_range(this: *This, offset: u64, vals: []u8) void {
+    pub fn set_range(this: *This, offset: u64, vals: []const u8) void {
         if (this.isSmallStr()) this.small.set_range(offset, vals) else this.large.set_range(offset, vals);
+    }
+
+    /// sets the index of buffer. no checks are done in releae builds
+    /// index: should be less than length, but is not checked in release builds
+    pub fn set1(this: *This, index: u64, val: u8) void {
+        if (this.isSmallStr()) this.small.set1(index, val) else this.large.set1(index, val);
     }
 
     /// delete a single characters. will shift all other characters down. deleting

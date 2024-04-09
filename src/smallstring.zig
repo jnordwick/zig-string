@@ -42,6 +42,24 @@ pub const SmallString = extern struct {
         return s;
     }
 
+    /// returns a subslice of the string. if the string is ever converted from small to large or has to be
+    /// reallocated to a different memory location, this slice will be invaid.
+    pub fn subslice(this: *This, offset: u64, len: u64) []u8 {
+        const cur_len = this.length();
+        std.debug.assert(offset < cur_len);
+        std.debug.assert(offset + len <= cur_len);
+        return this.data[offset .. offset + len];
+    }
+
+    /// returns a const subslice of the string. if the string is ever converted from small to large or has to be
+    /// reallocated to a different memory location, this slice will be invaid.
+    pub fn const_subslice(this: *const This, offset: u64, len: u64) []const u8 {
+        const cur_len = this.length();
+        std.debug.assert(offset < cur_len);
+        std.debug.assert(offset + len <= cur_len);
+        return this.data[offset .. offset + len];
+    }
+
     /// returns the string as a slice
     pub fn to_slice(this: *This) []u8 {
         return this.data[0..this.length()];
@@ -82,9 +100,16 @@ pub const SmallString = extern struct {
         this.set_length(0);
     }
 
+    /// Returns byte at position
+    /// index: no check is done in non-safe release modes
+    pub fn get1(this: *const This, index: u64) u8 {
+        std.debug.assert(index < this.length());
+        return this.data[index];
+    }
+
     /// sets the index of buffer. no checks are done in releae builds
     /// index: should be less than length, but is not checked in release builds
-    pub fn set(this: *This, index: u64, val: u8) void {
+    pub fn set1(this: *This, index: u64, val: u8) void {
         std.debug.assert(index < this.length());
         this.data[index] = val;
     }
@@ -93,7 +118,7 @@ pub const SmallString = extern struct {
     /// offset: the beginning offset
     /// vals: offset + vals.len should not extend past length but not checked
     /// in release builds
-    pub fn set_range(this: *This, offset: u64, vals: []u8) void {
+    pub fn set_range(this: *This, offset: u64, vals: []const u8) void {
         std.debug.assert(offset + vals.len < this.length());
         @memcpy(@as([*]u8, &this.data + offset), vals);
     }
