@@ -38,18 +38,6 @@ String.small or String.large if you already know. There is also some isSmall and
 isLargeStr predicates to help with that. String.lowbyte is also there to help
 determine the union type.
 
-* TODO
-- [X] make allocator optional
-- [X] subslice and const_subslice
-- [X] copying substring
-- [X] reserve, clear
-- [X] push back, append1
-- [X] set, set_range
-- [X] delete, delete range
-- [X] heap to stack
-- [X] realloc should first attempt to extend region
-- [X] document
-
 * Stuff already in std.mem?
 I'm tempted to reimplement some of stuff in std.mem or at least
 specialize it a little better. Some of the code is okay an some of it kind of
@@ -67,3 +55,8 @@ simplify the API a little.
 * Get rid of the allocator indirection?
 Would making alloc arguments be anytype help with performance? You just so
 rarely see the allocator chosen dynamically that it seems unnecessary.
+
+* TODO
+- [ ] better documentation
+- [ ] refine shift xor search, add to API
+- [ ] BM and online KMP
