@@ -68,7 +68,7 @@ pub const String = extern union {
     /// same capacity as the strig length.
     pub fn into_large(this: *This, alloc: *const Allocator) !void {
         if (this.isSmallStr()) {
-            var large_str = try LargeString.from_small(&this.small, 0, alloc);
+            const large_str = try LargeString.from_small(&this.small, 0, alloc);
             this.large = large_str;
         }
     }
@@ -84,7 +84,7 @@ pub const String = extern union {
             if (len >= SmallString.buf_size)
                 return StringError.TooLargeToConvert;
             var slice = this.large.to_slice();
-            var old_cap = this.large.cap;
+            const old_cap = this.large.cap;
             this.small.set_length(@intCast(len));
             @memcpy(@as([*]u8, &this.small.data), slice);
             if (alloc) |a| {
@@ -136,7 +136,7 @@ pub const String = extern union {
             const len = this.small.length() + more;
             if (len > SmallString.buf_size) {
                 if (alloc) |a| {
-                    var large_str = try LargeString.from_small(this, len * 2, a);
+                    const large_str = try LargeString.from_small(this, len * 2, a);
                     this.large = large_str;
                 } else {
                     return StringError.NoAllocator;
@@ -188,7 +188,7 @@ pub const String = extern union {
         if (this.isLargeStr()) {
             this.large.reserve(new_cap, alloc);
         } else if (new_cap > SmallString.buf_size) {
-            var str = try LargeString.from_small(&this.small, new_cap, alloc);
+            const str = try LargeString.from_small(&this.small, new_cap, alloc);
             this.large = str;
         }
     }

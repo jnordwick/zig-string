@@ -13,7 +13,7 @@ const LargeString = lstr.LargeString;
 comptime {
     if (@sizeOf(SmallString) != @sizeOf(LargeString))
         @compileError("SmallString and LargeString unexpectedly differnt sizes.");
-    if (builtin.cpu.arch.endian() != .Little)
+    if (builtin.cpu.arch.endian() != .little)
         @compileError("Currently String only runs on little endian.");
 }
 
