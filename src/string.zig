@@ -4,6 +4,25 @@ const Allocator = std.mem.Allocator;
 const SmallString = @import("smallstring.zig").SmallString;
 const LargeString = @import("largestring.zig").LargeString;
 
+pub const StringHashContext = struct {
+    pub fn hash(self: @This(), s: *const String) u64 {
+        _ = self;
+        var h: u64 = 43029;
+        for (s.to_const_slice()) |c| {
+            h = (h * 65) ^ c;
+        }
+        return h;
+    }
+    pub fn eql(self: @This(), x: *const String, y: *const String) bool {
+        _ = self;
+        return std.mem.eql(u8, x.to_const_slice(), y.to_const_slice());
+    }
+};
+
+pub fn sort_less_than(_: void, x: []const u8, y: []const u8) bool {
+    return std.mem.lessThan(u8, x, y);
+}
+
 pub const StringError = error{
     TooLargeToConvert,
     NoAllocator,
