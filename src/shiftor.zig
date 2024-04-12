@@ -1,6 +1,28 @@
 const std = @import("std");
 
-const ShiftOr = ShiftOrType(u64);
+const ShiftOr = ShiftOrType(u64, null);
+
+const TransformFunc = fn (char: u8) callconv(.Inline) u8;
+
+const to_lower_map: [256]u8 = b: {
+    var map: [256]u8 = [_]u8{0} ** 256;
+    for (0..256) |i| {
+        var c: u8 = @intCast(i);
+        if (c >= 'A' and c <= 'Z')
+            c = (c - 'A') + 'a';
+        map[i] = c;
+    }
+    break :b map;
+};
+
+/// transformer to map everything to lowercase
+pub inline fn transform_to_lower(c: u8) u8 {
+    return to_lower_map[c];
+}
+
+pub inline fn transform_ident(c: u8) u8 {
+    return c;
+}
 
 /// Create a Shoft Or matcher. This is a bit parallelism string matcher
 /// that runs in O(n) time where n is the length of the text. There is
@@ -20,7 +42,9 @@ const ShiftOr = ShiftOrType(u64);
 ///
 /// MaskT: An unsigned integer type that has bit width the length of the
 /// longest pattern the matcher will work with.
-pub fn ShiftOrType(comptime MaskT: type) type {
+/// tr: An inlineable function body that all characters will be filtered
+/// trough. It filters both the pattern and the text. see: transform_to_lower
+pub fn ShiftOrType(comptime MaskT: type, comptime tr: ?TransformFunc) type {
     const ti = @typeInfo(MaskT);
     if (ti != .Int or ti.Int.signedness != .unsigned)
         @compileError("ShiftOr MaskT must be an unsigned int with bit width of at least the max pattern length.");
@@ -29,6 +53,8 @@ pub fn ShiftOrType(comptime MaskT: type) type {
         pub const Mask = MaskT;
         pub const mask_bits = @typeInfo(Mask).Int.bits;
         pub const Shift = std.math.Log2Int(Mask);
+
+        pub const trfn: TransformFunc = tr orelse transform_ident;
 
         mask: [256]Mask = [_]Mask{0} ** 256,
         final: Mask = undefined,
@@ -46,7 +72,7 @@ pub fn ShiftOrType(comptime MaskT: type) type {
         /// text.length on failure.
         pub fn search(pattern: []const u8, text: []const u8) usize {
             var t = @This(){};
-            t.gen_mask(pattern);
+            t.preprocess(pattern);
             return t.match(text);
         }
 
@@ -56,18 +82,18 @@ pub fn ShiftOrType(comptime MaskT: type) type {
         ///
         /// pattern: the text to search for. pattern.len must not be larger
         /// than the bit width of the Mask type.
-        pub fn gen_mask(this: *@This(), pattern: []const u8) void {
+        pub fn preprocess(this: *@This(), pattern: []const u8) void {
             std.debug.assert(pattern.len > 0 and pattern.len <= mask_bits);
             this.patlen = pattern.len;
             this.final = @as(Mask, 1) << @as(Shift, @intCast(this.patlen - 1));
             for (0..pattern.len) |i| {
                 const shift = @as(Mask, 1) << @as(Shift, @intCast(i));
-                this.mask[pattern[i]] = this.mask[pattern[i]] | shift;
+                this.mask[trfn(pattern[i])] = this.mask[trfn(pattern[i])] | shift;
             }
         }
 
         /// Match text against the already preprocessed pattern. This should
-        /// only be called after gen_mask has been given a pattern.
+        /// only be called after preprocess has been given a pattern.
         ///
         /// text: can be any length
         /// return: the index of the first occurance of the pattern. returns
@@ -76,7 +102,7 @@ pub fn ShiftOrType(comptime MaskT: type) type {
             var state: Mask = 0;
             for (0..text.len) |i| {
                 state = (state << 1) + 1;
-                state = state & this.mask[text[i]];
+                state = state & this.mask[trfn(text[i])];
                 if (state & this.final != 0) {
                     return i - this.patlen + 1;
                 }
@@ -98,10 +124,10 @@ test "search" {
     try tt.expectEqual(@as(usize, s.len), r);
 }
 
-test "seach32" {
-    const SO = ShiftOrType(u32);
-    var s = "wkkcjehasdfwecwee";
-    var r = SO.search("asdf", s);
+test "seach32 caseless" {
+    const SO = ShiftOrType(u32, transform_to_lower);
+    var s = "wkkCjehAsdFWECwee";
+    var r = SO.search("aSDf", s);
     try tt.expectEqual(@as(usize, 7), r);
 
     s = "wkkcjehasxfwecwee";
@@ -110,7 +136,7 @@ test "seach32" {
 }
 
 test "search128" {
-    const SO = ShiftOrType(u128);
+    const SO = ShiftOrType(u128, null);
     var s = ("1234567890" ** 12) ++ "asdf";
     var r = SO.search("asdf", s);
     try tt.expectEqual(@as(usize, 120), r);
