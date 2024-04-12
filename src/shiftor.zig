@@ -1,28 +1,8 @@
 const std = @import("std");
+const str = @import("string.zig");
 
 const ShiftOr = ShiftOrType(u64, null);
-
-const TransformFunc = fn (char: u8) callconv(.Inline) u8;
-
-const to_lower_map: [256]u8 = b: {
-    var map: [256]u8 = [_]u8{0} ** 256;
-    for (0..256) |i| {
-        var c: u8 = @intCast(i);
-        if (c >= 'A' and c <= 'Z')
-            c = (c - 'A') + 'a';
-        map[i] = c;
-    }
-    break :b map;
-};
-
-/// transformer to map everything to lowercase
-pub inline fn transform_to_lower(c: u8) u8 {
-    return to_lower_map[c];
-}
-
-pub inline fn transform_ident(c: u8) u8 {
-    return c;
-}
+const ShiftOrNoCase = ShiftOrType(u64, str.transform_to_lower);
 
 /// Create a Shoft Or matcher. This is a bit parallelism string matcher
 /// that runs in O(n) time where n is the length of the text. There is
@@ -44,7 +24,7 @@ pub inline fn transform_ident(c: u8) u8 {
 /// longest pattern the matcher will work with.
 /// tr: An inlineable function body that all characters will be filtered
 /// trough. It filters both the pattern and the text. see: transform_to_lower
-pub fn ShiftOrType(comptime MaskT: type, comptime tr: ?TransformFunc) type {
+pub fn ShiftOrType(comptime MaskT: type, comptime tr: ?str.TransformFunc) type {
     const ti = @typeInfo(MaskT);
     if (ti != .Int or ti.Int.signedness != .unsigned)
         @compileError("ShiftOr MaskT must be an unsigned int with bit width of at least the max pattern length.");
@@ -54,7 +34,7 @@ pub fn ShiftOrType(comptime MaskT: type, comptime tr: ?TransformFunc) type {
         pub const mask_bits = @typeInfo(Mask).Int.bits;
         pub const Shift = std.math.Log2Int(Mask);
 
-        pub const trfn: TransformFunc = tr orelse transform_ident;
+        pub const trfn: str.TransformFunc = tr orelse str.transform_ident;
 
         mask: [256]Mask = [_]Mask{0} ** 256,
         final: Mask = undefined,
@@ -125,7 +105,7 @@ test "search" {
 }
 
 test "seach32 caseless" {
-    const SO = ShiftOrType(u32, transform_to_lower);
+    const SO = ShiftOrType(u32, str.transform_to_lower);
     var s = "wkkCjehAsdFWECwee";
     var r = SO.search("aSDf", s);
     try tt.expectEqual(@as(usize, 7), r);

@@ -1,6 +1,29 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+pub const TransformFunc = fn (char: u8) callconv(.Inline) u8;
+
+pub const to_lower_map: [256]u8 = b: {
+    var map: [256]u8 = [_]u8{0} ** 256;
+    for (0..256) |i| {
+        var c: u8 = @intCast(i);
+        if (c >= 'A' and c <= 'Z')
+            c = (c - 'A') + 'a';
+        map[i] = c;
+    }
+    break :b map;
+};
+
+/// transformer to map uppercase to lowercase. All other characters
+/// or bytes are untouched. 8-bit ASCII only.
+pub inline fn transform_to_lower(c: u8) u8 {
+    return to_lower_map[c];
+}
+
+pub inline fn transform_ident(c: u8) u8 {
+    return c;
+}
+
 const SmallString = @import("smallstring.zig").SmallString;
 const LargeString = @import("largestring.zig").LargeString;
 
