@@ -28,16 +28,16 @@ const SmallString = @import("smallstring.zig").SmallString;
 const LargeString = @import("largestring.zig").LargeString;
 
 pub const StringHashContext = struct {
-    pub fn hash(self: @This(), s: *const String) u64 {
-        _ = self;
+    pub fn hash(this: @This(), s: *const String) u64 {
+        _ = this;
         var h: u64 = 43029;
         for (s.to_const_slice()) |c| {
             h = (h * 65) ^ c;
         }
         return h;
     }
-    pub fn eql(self: @This(), x: *const String, y: *const String) bool {
-        _ = self;
+    pub fn eql(this: @This(), x: *const String, y: *const String) bool {
+        _ = this;
         return std.mem.eql(u8, x.to_const_slice(), y.to_const_slice());
     }
 };
@@ -145,7 +145,7 @@ pub const String = extern union {
 
     /// return the string as a const slice. if the string is ever converted from small to large or has to be
     /// reallocated to a different memory location, this slice will be invaid.
-    pub fn to_const_slice(this: *This) []const u8 {
+    pub fn to_const_slice(this: *const This) []const u8 {
         return if (this.isSmallStr()) this.small.to_const_slice() else this.large.to_const_slice();
     }
 
@@ -257,5 +257,33 @@ pub const String = extern union {
     /// characters up to the length of the string will be deleted.
     pub fn delete_range(this: *This, offset: u64, len: u64) void {
         if (this.isSmallStr()) this.small.delete_range(offset, len) else this.large.delete_range(offset, len);
+    }
+
+    fn format(this: *const String, comptime fmt: []const u8, options: std.fmt.FormatOptions, out_stream: anytype) !void {
+        try std.fmt.formatType(this.to_const_slice(), fmt, options, out_stream, 1);
+    }
+
+    pub fn eql(this: *const String, that: *const String) bool {
+        return std.mem.eql(this.to_const_slice(), that, to_const_slice());
+    }
+
+    pub fn ieql(this: *const String, that: *const String, tr: TransformFunc) bool {
+        const xsl = this.to_const_slice();
+        const ysl = that.to_const_slice();
+
+        if (xsl.len != ysl.len)
+            return false;
+        for (xsl, ysl) |x, y| {
+            if (tr(x) != tr(y))
+                return false;
+        }
+        return true;
+    }
+
+    pub fn transform(this: *String, tr: TransformFunc) void {
+        var sl = this.to_slice();
+        for (0..sl.len) |i| {
+            sl[i] = tr(sl[i]);
+        }
     }
 };
