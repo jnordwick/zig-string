@@ -20,7 +20,7 @@ comptime {
 // --- Tests ---
 
 const tt = std.testing;
-const talloc = &tt.allocator;
+const talloc = tt.allocator;
 
 test "small copy" {
     const h = "hello";

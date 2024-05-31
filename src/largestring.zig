@@ -18,14 +18,14 @@ pub const LargeString = extern struct {
 
     const This = @This();
 
-    fn alloc_data(cap: u64, alloc: *const Allocator) ![]u8 {
+    fn alloc_data(cap: u64, comptime alloc: Allocator) ![]u8 {
         const request_cap = cap + (cap & 1);
         const data_slice = try alloc.alloc(u8, request_cap);
         std.debug.assert(data_slice.len & 1 == 0);
         return data_slice;
     }
 
-    fn realloc_data(this: *This, new_cap: u64, alloc: *const Allocator) !void {
+    fn realloc_data(this: *This, new_cap: u64, comptime alloc: Allocator) !void {
         const alloc_slice = this.data[0..this.cap];
         const did_resize = alloc.resize(alloc_slice, new_cap);
         if (did_resize) {
@@ -41,7 +41,7 @@ pub const LargeString = extern struct {
 
     /// create new LargeString.
     /// cap: initial capacity. If cap is odd 1 will be added to keep it even.
-    pub fn init(cap: u64, alloc: *const Allocator) !This {
+    pub fn init(cap: u64, comptime alloc: Allocator) !This {
         var this: This = undefined;
         const data_slice = try alloc_data(cap, alloc);
         this.cap = data_slice.len;
@@ -55,7 +55,7 @@ pub const LargeString = extern struct {
     /// cap: initial capacity. If cap is less tha the string length, the
     /// string length will be used. If cap is odd 1 will be added to keep
     /// it even.
-    pub fn init_copy(str: []const u8, cap: u64, alloc: *const Allocator) !This {
+    pub fn init_copy(str: []const u8, cap: u64, comptime alloc: Allocator) !This {
         var this: This = undefined;
         const alloc_amt = @max(str.len, cap);
         const data_slice = try alloc_data(alloc_amt, alloc);
@@ -69,7 +69,7 @@ pub const LargeString = extern struct {
     /// convert a small string into a large allocated string
     /// str: the small string to convert
     /// cap: the initial capacity for the allocation. see also init_copy for a description of cap
-    pub fn from_small(str: *const SmallString, cap: u64, alloc: *const Allocator) !This {
+    pub fn from_small(str: *const SmallString, cap: u64, comptime alloc: Allocator) !This {
         const str_slice = str.to_const_slice();
         return init_copy(str_slice, cap, alloc);
     }
@@ -104,11 +104,11 @@ pub const LargeString = extern struct {
     /// object is left in an invalid state. Just init a new one on top
     /// of it to resuse the struct space.
     /// alloc: the allocator used to create the internal buffer. see init_copy
-    pub fn deinit(this: *This, alloc: *const Allocator) void {
+    pub fn deinit(this: *This, comptime alloc: Allocator) void {
         alloc.free(this.data[0..this.cap]);
     }
 
-    pub fn push_back(this: *This, x: u8, alloc: ?*Allocator) !void {
+    pub fn push_back(this: *This, x: u8, comptime alloc: Allocator) !void {
         const new_len = this.len + @sizeOf(x);
         if (new_len > this.cap) {
             try this.reserve(new_len * 2, alloc);
@@ -121,7 +121,7 @@ pub const LargeString = extern struct {
         this.len += 1;
     }
 
-    pub fn append1(this: *This, x: u8, count: u64, alloc: ?*Allocator) !void {
+    pub fn append1(this: *This, x: u8, count: u64, comptime alloc: Allocator) !void {
         const new_len = this.len + count;
         if (new_len > this.cap) {
             try this.reserve(new_len * 2, alloc);
@@ -144,7 +144,7 @@ pub const LargeString = extern struct {
     /// it can be null if you know you will not go past capacity and need more
     /// space. StringError.NoAllocator will be returned if more space is needed
     /// but an allocator isn't supplied.
-    pub fn append(this: *This, str: []const u8, alloc: ?*const Allocator) !void {
+    pub fn append(this: *This, str: []const u8, comptime alloc: Allocator) !void {
         const new_len = this.len + str.len;
         if (new_len > this.cap) {
             try this.reserve(new_len * 2, alloc);
@@ -168,7 +168,7 @@ pub const LargeString = extern struct {
 
     /// enlares the buffer the the new capacity if needed. this will not
     /// shrink the buffer.
-    pub fn reserve(this: *This, new_cap: u64, alloc: ?*const Allocator) !void {
+    pub fn reserve(this: *This, new_cap: u64, comptime alloc: Allocator) !void {
         if (new_cap > this.cap) {
             if (alloc) |a| {
                 return this.realloc_data(new_cap, a);

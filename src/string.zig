@@ -14,12 +14,12 @@ pub const to_lower_map: [256]u8 = b: {
     break :b map;
 };
 
-/// transformer to map uppercase to lowercase. All other characters
-/// or bytes are untouched. 8-bit ASCII only.
+/// transformer to map uppercase to lowercase.
 pub inline fn transform_to_lower(c: u8) u8 {
     return to_lower_map[c];
 }
 
+/// does absolutely nothing
 pub inline fn transform_ident(c: u8) u8 {
     return c;
 }
@@ -51,6 +51,9 @@ pub const StringError = error{
     NoAllocator,
 } || Allocator.Error;
 
+/// A string with short string optimization. It can store up to 23 bytes in
+/// situ before it spill to an external allocation. While in short string mode
+/// no allocations are done. This stratgy is often
 pub const String = extern union {
     lowbyte: u8,
     small: SmallString,
@@ -75,21 +78,17 @@ pub const String = extern union {
     /// str: the slice to copy.
     /// alloc: can be null if you know the string will fit in a
     /// SmallString and the allocator will not be needed.
-    pub fn init_copy(str: []const u8, alloc: ?*const Allocator) !This {
+    pub fn init_copy(str: []const u8, comptime alloc: anytype) !This {
         if (str.len <= SmallString.buf_size) {
             return .{ .small = SmallString.init_copy(str) };
         } else {
-            if (alloc) |a| {
-                return .{ .large = try LargeString.init_copy(str, str.len * 2, a) };
-            } else {
-                return StringError.NoAllocator;
-            }
+            return .{ .large = try LargeString.init_copy(str, str.len * 2, alloc) };
         }
     }
 
     /// If not already a LargeString, will convert this to one with the
     /// same capacity as the strig length.
-    pub fn into_large(this: *This, alloc: *const Allocator) !void {
+    pub fn into_large(this: *This, comptime alloc: anytype) !void {
         if (this.isSmallStr()) {
             const large_str = try LargeString.from_small(&this.small, 0, alloc);
             this.large = large_str;
@@ -101,7 +100,7 @@ pub const String = extern union {
     /// in a small string StringError.TooLargeToConvert will be returned.
     /// alloc: if null will not attempt to free the buffer. Useful for arena
     /// or stack allocators that do not need to be freed.
-    pub fn into_small(this: *This, alloc: ?*const Allocator) !void {
+    pub fn into_small(this: *This, comptime alloc: anytype) !void {
         if (this.isLargeStr()) {
             const len: u64 = this.large.len;
             if (len >= SmallString.buf_size)
@@ -110,13 +109,11 @@ pub const String = extern union {
             const old_cap = this.large.cap;
             this.small.set_length(@intCast(len));
             @memcpy(@as([*]u8, &this.small.data), slice);
-            if (alloc) |a| {
-                a.free(slice.ptr[0..old_cap]);
-            }
+            alloc.free(slice.ptr[0..old_cap]);
         }
     }
 
-    pub fn substr(this: *const This, offset: u64, len: u64, alloc: ?*const Allocator) String {
+    pub fn substr(this: *const This, offset: u64, len: u64, comptime alloc: anytype) String {
         const sub: []u8 = this.const_subslice(offset, len);
         if (len <= SmallString.buf_size) {
             return .{ .small = SmallString.init_copy(sub) };
@@ -154,7 +151,7 @@ pub const String = extern union {
         return if (this.isSmallStr()) this.small.length() else this.large.len;
     }
 
-    pub fn reserve_more(this: *This, more: u64, alloc: ?*Allocator) !void {
+    pub fn reserve_more(this: *This, more: u64, comptime alloc: ?Allocator) !void {
         if (this.isSmallString()) {
             const len = this.small.length() + more;
             if (len > SmallString.buf_size) {
@@ -173,12 +170,12 @@ pub const String = extern union {
         }
     }
 
-    pub fn push_back(this: *This, x: u8, alloc: ?*Allocator) !void {
+    pub fn push_back(this: *This, x: u8, comptime alloc: ?Allocator) !void {
         try this.reserve_more(@sizeOf(x), alloc);
         if (this.isSmallStr()) this.small.push_back(x) else this.large.push_back_noalloc();
     }
 
-    pub fn append1(this: *This, x: u8, count: u64, alloc: ?*Allocator) !void {
+    pub fn append1(this: *This, x: u8, count: u64, comptime alloc: ?Allocator) !void {
         try this.reserve_more(count, alloc);
         if (this.isSmallString()) this.small.append1(x, count) else this.large.append1_noalloc(x, count);
     }
@@ -187,7 +184,7 @@ pub const String = extern union {
     /// other: other string to append
     /// alloc: can be left null if you know you will not need to grow the region or
     /// convert to a LargeString
-    pub fn append(this: *This, other: *const String, alloc: ?*const Allocator) !void {
+    pub fn append(this: *This, other: *const String, comptime alloc: ?Allocator) !void {
         return this.append_slice(other.to_const_slice(), alloc);
     }
 
@@ -195,7 +192,7 @@ pub const String = extern union {
     /// other: other string to append
     /// alloc: can be left null if you know you will not need to grow the region or
     /// convert to a LargeString
-    pub fn append_slice(this: *This, other: []const u8, alloc: ?*const Allocator) !void {
+    pub fn append_slice(this: *This, other: []const u8, comptime alloc: ?Allocator) !void {
         try this.reserve_more(other.len, alloc);
         if (this.isSmallString()) this.small.append(other) else this.large.append_noalloc(other);
     }
@@ -207,7 +204,7 @@ pub const String = extern union {
 
     /// ensures at least new_capacity total cap, but will not shribnk the cap.
     /// will spill to large string if needed.
-    pub fn reserve(this: *This, new_cap: u64, alloc: ?*const Allocator) !void {
+    pub fn reserve(this: *This, new_cap: u64, comptime alloc: ?Allocator) !void {
         if (this.isLargeStr()) {
             this.large.reserve(new_cap, alloc);
         } else if (new_cap > SmallString.buf_size) {
@@ -217,7 +214,6 @@ pub const String = extern union {
     }
 
     /// Returns byte at position
-    /// index: no check is done in non-safe release modes
     pub fn get1(this: *const This, index: u64) u8 {
         return if (this.isSmallStr()) this.small.get(index) else this.large.get(index);
     }
