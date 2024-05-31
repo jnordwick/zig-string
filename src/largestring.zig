@@ -25,7 +25,7 @@ pub const LargeString = extern struct {
         return data_slice;
     }
 
-    fn realloc_data(this: *This, new_cap: u64, comptime alloc: Allocator) !void {
+    noinline fn realloc_data(this: *This, new_cap: u64, comptime alloc: Allocator) !void {
         const alloc_slice = this.data[0..this.cap];
         const did_resize = alloc.resize(alloc_slice, new_cap);
         if (did_resize) {
@@ -76,7 +76,7 @@ pub const LargeString = extern struct {
 
     /// returns a subslice of the string. if the string is ever converted from small to large or has to be
     /// reallocated to a different memory location, this slice will be invaid.
-    pub fn subslice(this: *This, offset: u64, len: u64) []u8 {
+    pub fn subslice(this: *This, offset: usize, len: u64) []u8 {
         std.debug.assert(offset < this.len);
         std.debug.assert(offset + len <= this.len);
         return this.data[offset .. offset + len];
@@ -84,7 +84,7 @@ pub const LargeString = extern struct {
 
     /// returns a const subslice of the string. if the string is ever converted from small to large or has to be
     /// reallocated to a different memory location, this slice will be invaid.
-    pub fn const_subslice(this: *const This, offset: u64, len: u64) []const u8 {
+    pub fn const_subslice(this: *const This, offset: usize, len: u64) []const u8 {
         std.debug.assert(offset < this.len);
         std.debug.assert(offset + len <= this.len);
         return this.data[offset .. offset + len];
@@ -109,27 +109,19 @@ pub const LargeString = extern struct {
     }
 
     pub fn push_back(this: *This, x: u8, comptime alloc: Allocator) !void {
-        const new_len = this.len + @sizeOf(x);
+        const new_len = this.len + 1;
         if (new_len > this.cap) {
             try this.reserve(new_len * 2, alloc);
         }
-        this.push_back_noalloc(x);
-    }
-
-    pub fn push_back_noalloc(this: *This, x: u8) void {
         this.data[this.len] = x;
         this.len += 1;
     }
 
-    pub fn append1(this: *This, x: u8, count: u64, comptime alloc: Allocator) !void {
+    pub fn append(this: *This, x: u8, count: u64, comptime alloc: Allocator) !void {
         const new_len = this.len + count;
         if (new_len > this.cap) {
-            try this.reserve(new_len * 2, alloc);
+            try this.realloc_data(new_len * 2, alloc);
         }
-        this.append1_noalloc(x, count);
-    }
-
-    pub fn append1_noalloc(this: *This, x: u8, count: u64) void {
         std.debug.assert(this.len + count <= this.cap);
         const base = this.data + this.len;
         for (0..count) |c| {
@@ -138,23 +130,12 @@ pub const LargeString = extern struct {
         this.len += count;
     }
 
-    /// append a slice to the string, allocating more space if needed
-    /// str: a string as a slice, does not need a sentinel terminator
-    /// alloc: the allocator used to create the original buffer. see init_copy.
-    /// it can be null if you know you will not go past capacity and need more
-    /// space. StringError.NoAllocator will be returned if more space is needed
-    /// but an allocator isn't supplied.
-    pub fn append(this: *This, str: []const u8, comptime alloc: Allocator) !void {
+    /// append a slice to the string, allocating more space if needed.
+    pub fn append_slice(this: *This, str: []const u8, comptime alloc: Allocator) !void {
         const new_len = this.len + str.len;
         if (new_len > this.cap) {
             try this.reserve(new_len * 2, alloc);
         }
-        this.append_noalloc(str);
-    }
-
-    /// Append to the buffer. No checks are made for length. The caller is
-    /// responsible for making sure it will fit in the buffer.
-    pub fn append_noalloc(this: *This, str: []const u8) void {
         std.debug.assert(this.len + str.len <= this.cap);
         @memcpy(&this.data + this.len, str);
         this.len += str.len;
@@ -166,28 +147,24 @@ pub const LargeString = extern struct {
         this.length = 0;
     }
 
-    /// enlares the buffer the the new capacity if needed. this will not
+    /// Enlarges the buffer to the the new capacity if needed. this will not
     /// shrink the buffer.
     pub fn reserve(this: *This, new_cap: u64, comptime alloc: Allocator) !void {
         if (new_cap > this.cap) {
-            if (alloc) |a| {
-                return this.realloc_data(new_cap, a);
-            } else {
-                return StringError.NoAllocator;
-            }
+            return this.realloc_data(new_cap, alloc);
         }
     }
 
     /// Returns byte at position
     /// index: no check is done in non-safe release modes
-    pub fn get1(this: *const This, index: u64) u8 {
+    pub fn get(this: *const This, index: usize) u8 {
         std.debug.assert(index < this.len);
         return this.data[index];
     }
 
     /// sets the index of buffer. no checks are done in releae builds
     /// index: should be less than length, but is not checked in release builds
-    pub fn set1(this: *This, index: u64, val: u8) void {
+    pub fn set(this: *This, index: usize, val: u8) void {
         std.debug.assert(index < this.len);
         this.data[index] = val;
     }
@@ -196,18 +173,21 @@ pub const LargeString = extern struct {
     /// offset: the beginning offset
     /// vals: offset + vals.len should not extend past length but not checked
     /// in release builds
-    pub fn set_range(this: *This, offset: u64, vals: []const u8) void {
+    pub fn set_range(this: *This, offset: usize, vals: []const u8) void {
         std.debug.assert(offset + vals.len < this.len);
         @memcpy(this.data + this.len, vals);
+    }
+
+    pub fn pop(this: *This) u8 {
+        this.len -= 1;
+        return this.data[this.len];
     }
 
     /// delete a single characters. will shift all other characters down. deleting
     /// from the end of the string doesn't require any shifting.
     /// index: the character to remove
-    pub fn delete1(this: *This, index: u64) void {
+    pub fn delete(this: *This, index: usize) void {
         const cur_len = this.len;
-        if (index >= cur_len)
-            return;
         if (index != cur_len - 1) {
             const copy_len = cur_len - index - 1;
             const too_base = this.data + index;
@@ -219,12 +199,17 @@ pub const LargeString = extern struct {
         this.len -= 1;
     }
 
+    pub fn delete_unstable(this: *This, index: usize) void {
+        this.len -= 1;
+        this.data[index] = this.data[this.len];
+    }
+
     /// delete a range of characters. will shift all other characters down. deleting
     /// from the end of the string doesn't require any shifting.
     /// offset: start of the range to delete. If past length nothing will be deleted
     /// len: how many characters to delete. If this extends the range past len only
     /// characters up to the length of the string will be deleted.
-    pub fn delete_range(this: *This, offset: u64, len: u64) void {
+    pub fn delete_range(this: *This, offset: usize, len: u64) void {
         const cur_len = this.len;
         if (offset >= cur_len)
             return;

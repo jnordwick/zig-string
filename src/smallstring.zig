@@ -44,7 +44,7 @@ pub const SmallString = extern struct {
 
     /// returns a subslice of the string. if the string is ever converted from small to large or has to be
     /// reallocated to a different memory location, this slice will be invaid.
-    pub fn subslice(this: *This, offset: u64, len: u64) []u8 {
+    pub fn subslice(this: *This, offset: usize, len: u64) []u8 {
         const cur_len = this.length();
         std.debug.assert(offset < cur_len);
         std.debug.assert(offset + len <= cur_len);
@@ -53,7 +53,7 @@ pub const SmallString = extern struct {
 
     /// returns a const subslice of the string. if the string is ever converted from small to large or has to be
     /// reallocated to a different memory location, this slice will be invaid.
-    pub fn const_subslice(this: *const This, offset: u64, len: u64) []const u8 {
+    pub fn const_subslice(this: *const This, offset: usize, len: u64) []const u8 {
         const cur_len = this.length();
         std.debug.assert(offset < cur_len);
         std.debug.assert(offset + len <= cur_len);
@@ -77,7 +77,7 @@ pub const SmallString = extern struct {
         this.set_length(len + @sizeOf(x));
     }
 
-    pub fn append1(this: *This, x: u8, count: u64) void {
+    pub fn append(this: *This, x: u8, count: u64) void {
         const len = this.length();
         std.debug.assert(len + count <= buf_size);
         const base: [*]u8 = &this.data + this.len;
@@ -88,7 +88,7 @@ pub const SmallString = extern struct {
     }
 
     /// appends the slice to the in situ buffer. no length checks are done.
-    pub fn append(this: *This, str: []const u8) void {
+    pub fn append_slice(this: *This, str: []const u8) void {
         const len = this.length();
         std.debug.assert(len + str.len <= buf_size);
         @memcpy(&this.data + len, str);
@@ -102,31 +102,33 @@ pub const SmallString = extern struct {
 
     /// Returns byte at position
     /// index: no check is done in non-safe release modes
-    pub fn get1(this: *const This, index: u64) u8 {
+    pub fn get(this: *const This, index: usize) u8 {
         std.debug.assert(index < this.length());
         return this.data[index];
     }
 
     /// sets the index of buffer. no checks are done in releae builds
-    /// index: should be less than length, but is not checked in release builds
-    pub fn set1(this: *This, index: u64, val: u8) void {
+    pub fn set(this: *This, index: usize, val: u8) void {
         std.debug.assert(index < this.length());
         this.data[index] = val;
     }
 
     /// sets a range of values. no checks are done in release builds
     /// offset: the beginning offset
-    /// vals: offset + vals.len should not extend past length but not checked
-    /// in release builds
-    pub fn set_range(this: *This, offset: u64, vals: []const u8) void {
+    pub fn set_range(this: *This, offset: usize, vals: []const u8) void {
         std.debug.assert(offset + vals.len < this.length());
         @memcpy(@as([*]u8, &this.data + offset), vals);
+    }
+
+    /// reduce the string by one and
+    pub fn pop(this: *This) u8 {
+        this.set_length(this.length() - 1);
     }
 
     /// delete a single characters. will shift all other characters down. deleting
     /// from the end of the string doesn't require any shifting.
     /// index: the character to remove
-    pub fn delete1(this: *This, index: u64) void {
+    pub fn delete(this: *This, index: usize) void {
         const cur_len = this.length();
         if (index >= cur_len)
             return;
@@ -141,12 +143,18 @@ pub const SmallString = extern struct {
         this.set_length(cur_len - 1);
     }
 
+    pub fn delete_unstable(this: *This, index: usize) void {
+        const len = this.length();
+        this.data[index] = this.data[len - 1];
+        this.set_length(len - 1);
+    }
+
     /// delete a range of characters. will shift all other characters down. deleting
     /// from the end of the string doesn't require any shifting.
     /// offset: start of the range to delete. If past length nothing will be deleted
     /// len: how many characters to delete. If this extends the range past len only
     /// characters up to the length of the string will be deleted.
-    pub fn delete_range(this: *This, offset: u64, len: u64) void {
+    pub fn delete_range(this: *This, offset: usize, len: u64) void {
         const cur_len = this.length();
         if (offset >= cur_len)
             return;

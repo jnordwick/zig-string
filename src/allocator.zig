@@ -19,15 +19,15 @@ pub const NullAllocator = struct {
         };
     }
 
-    pub fn alloc(_: *anyopaque, _: usize, _: u8, _: usize) ?[*]u8 {
+    pub inline fn alloc(_: *anyopaque, _: usize, _: u8, _: usize) ?[*]u8 {
         unreachable;
     }
 
-    pub fn resize(_: *anyopaque, _: []u8, _: u8, _: usize, _: usize) bool {
+    pub inline fn resize(_: *anyopaque, _: []u8, _: u8, _: usize, _: usize) bool {
         unreachable;
     }
 
-    fn free(_: *anyopaque, _: []u8, _: u8, _: usize) void {
+    pub inline fn free(_: *anyopaque, _: []u8, _: u8, _: usize) void {
         unreachable;
     }
 };

@@ -51,7 +51,7 @@ test "small to large" {
 test "union" {
     const str = String.init();
     try tt.expectEqual(@as(u8, 1), str.lowbyte);
-    try tt.expect(str.isSmallStr());
+    try tt.expect(str.is_small());
     try tt.expectEqual(@as(u64, 0), str.length());
 }
 
@@ -60,12 +60,12 @@ test "small into large into small" {
     var ss = try String.init_copy(h, talloc);
 
     try ss.into_large(talloc);
-    try tt.expect(ss.isLargeStr());
+    try tt.expect(ss.is_large());
     try tt.expectEqual(@as(u64, 5), ss.length());
     try tt.expectEqualSlices(u8, h[0..], ss.to_slice());
 
     try ss.into_small(talloc);
-    try tt.expect(ss.isSmallStr());
+    try tt.expect(ss.is_small());
     try tt.expectEqual(@as(u64, 5), ss.length());
     try tt.expectEqualSlices(u8, h[0..], ss.to_slice());
 }
@@ -78,9 +78,9 @@ test "delete range" {
     const h2 = "ho";
     const h3 = "h";
 
-    ss.delete1(100);
+    ss.delete(100);
     try tt.expectEqualSlices(u8, h[0..], ss.to_slice());
-    ss.delete1(1);
+    ss.delete(1);
     try tt.expectEqualSlices(u8, h1[0..], ss.to_slice());
     ss.delete_range(1, 2);
     try tt.expectEqualSlices(u8, h2[0..], ss.to_slice());
