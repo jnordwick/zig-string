@@ -1,50 +1,65 @@
 * Introduction
-This is a simple string library that is more a proof of concept more than
-anything else. It includes the in place small string optimization and you shoud
-be able to return those stack objects fine by copy. the large string heap
-version should also be fine by copy. I'm not happy with the api and keep trying
-to simplify it.
+This is a simple string library that implements an in situ buffer for the
+small string optimization. It can store up to 23 bytes without spill into
+an external allocation.
 
 Alot of basic functionality, such as looping over the contents of the string, it
 is easier to just get a slice from the string and use that so things like basic
 iterators are not implemented, and I feel would just clutter the API, be
-slower, and be more places for bugs.
+slower, and be more places for bugs. Often the easiest way of interacting
+with the string is to use to_slice and to_const_slice. There are some
+operations that are pushed into the contains SmallString or LargeString
+where they can take advantage of specific properties of the string. And there
+are more I definitely want to do that to but haven't had the time yet.
 
 I tried to use the std.mem functions where possible but sometimes they were just
 too slow or didn't fit the API well. In some cases I probably don't know they
 even exist. Std is just a mess -- I hope there are plans to clean it up.
 
 * Allocations
-Some of allocator arguments are optional for cases where you
-know you wont need it, but for functions like reserve where it is always needed
-(unless you are making unnecessary reserve calls) it is still required. I was
-thinking of just making all allocator arguments optional but it doesn't make
-sense in some cases but might make the api simplier.
+This used to have optional allocator arguments, then I tried anytype, and now
+I'm trying comptime Allocator with a special null_alloc that just send
+everything to unreachable. I'm trying to find a way that is both easy (many
+times you know you don't need to allocate but the function still needs one)
+and has top performance. Since these strings tend to be small, having a
+true vtable jump can begin to dominate is loop. I think this should work, but
+I'm still searching for that magical zero-cost for both mental load and
+function call cost.
 
-* Extend to small vec
+* Extend to small vec and Unicode
 It should be possible to use this for u8 numbers already if you just ignore the
 word string all over the place. It should also be possible to wrap this in a
 type function and have it use u16 or other, but it becomes much more limited and
-I think there are better ways to do small vecs. Usually you don't need to spill
-characteristics and you know if you will have large or small vectors at compile
-time, and if you don't it is usually easier to manage than strings. I'd be more
-include to just write a small vec implementation with no spillage.
+I think there are better ways to do small vecs. By the time you are looking at
+sizes up to u32 for a unicode code point, you're only storing 5 characters (I
+could add a dummy char to the LargeString that is there solely to get the
+SmallString up to 6 characters but that just seems trivially small to be
+useful).
+
+Smallish vectors like three u64, if the padding byte was added to large string
+would be able to fit, but those cases are probably better handled by just a
+simple [3]f64 because you aren't really growing those vectors and needing to
+worry about spill.
+
+Having 11 bytes of UTF-16 might be useful though, but I despise UTF-16, and the
+only think I know of that uses it is Windows APIs, and 11 bytes seems too small
+for filenames or such.
 
 * Usage without the union String indirection
-Often you will now if you have a small or large string. for example, if you use
+Often you will know if you have a small or large string. for example, if you use
 this as a hash key and know your key length. you can use SmallString and
 LargeString directly if you want or you can still use String and call into
-String.small or String.large if you already know. There is also some isSmall and
-isLargeStr predicates to help with that. String.lowbyte is also there to help
-determine the union type.
+String.small or String.large. There is also some isSmall and isLargeStr
+predicates to help with that. String.lowbyte is also there to help determine
+the union type.
 
 * Stuff already in std.mem?
 I'm tempted to reimplement some of stuff in std.mem or at least
 specialize it a little better. Some of the code is okay an some of it kind of
 sucks, but it can easily be used by grabbing the slice and calling it on that
-most of the time. There are some instances ike where you want to split the
+most of the time. There are some instances eg where you want to split the
 string on multiple indexes where that doesn't work as well anymore though. I'll
-add them to here as needed and I think leave the called to call the std.mem
+add them to here as needed, and I think leave the calls to call the std.mem
 functions, i think -- still not sure on it.
 
 * Everything is a slice?
@@ -52,11 +67,17 @@ The API might change somewhat substantially by making any function that takes in
 a string or null terminated string just take a slice instead. This should
 simplify the API a little.
 
-* Get rid of the allocator indirection?
-Would making alloc arguments be anytype help with performance? You just so
-rarely see the allocator chosen dynamically that it seems unnecessary.
+* More string functions
+There are a few files with more string comparison functions. Right now there is
+a Boyer-Moore-Harspool string matcher and a Shift-XOR matcher. The former is
+great for midsize strings, and the latter is great for small strings. There is
+small string hash function that is extremely quick to run because all the hash
+functions in std are more appropriate for much much longer strings like webpages
+and were absolutely dominating runtimes. I'm not sure how to add those to the
+API yet, but they will be added, more are on the way (including an N-way
+Rabin-Karp), and the code is there to use now.
 
 * TODO
 - [ ] better documentation
 - [ ] refine shift xor search, add to API
-- [ ] BM and online KMP
+- [ ] N-way Rabin-Karp
