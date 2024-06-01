@@ -16,26 +16,15 @@ I tried to use the std.mem functions where possible but sometimes they were just
 too slow or didn't fit the API well. In some cases I probably don't know they
 even exist. Std is just a mess -- I hope there are plans to clean it up.
 
-* Alternative implementation
+* Implementation
 I've been kicking around changing the implementation. Since the length of small
 will always be less than 32 and a single byte, the 6th through 8th bits can be
 used to signal that the string is in large mode. This means there is no
-shifting, just see if either of those bits are set. For a large string, the
-length can't be controlled so the choices are either mask those out and somehow
-use the remaining bits to determine the length, kinda. If the fields aren't
-their natural values -- so cannot just be straight returned -- then it doesn't
-matter what field of LargeString sits there. So we either mask out those two
-bits and it we can make it any of the length, capacity, or pointer. The other
-choice is leave those bits as is and place large string's capacity there and
-just always allocate at a capacity where one of those bits is set. Since it is
-a large string who's size (unless compacted down and not converted back to a
-short string - a very niche use case) is at least 24 bytes, that should be
-trivial to keep true. The worse cast is the low byte is all zeros so it already
-has a capcity of 256, then 32 needs to be added and instead a capacity of 286 is
-created instead. The trade off with the current implementation is that short
-string doesn't need to shift its lenth but we add up to 32 bytes on any
-particular large string. Seems like an okay trade off, but not large enough to
-make me actually change the code.
+shifting, just see if any of those bits are set. For a large string, the
+length can't be controlled so capacity is put first in the struct and it always
+need to generate a capaciity where of of those bits is set (it does this by
+zeroing the lower bits and adding 32, so any capacity may be grown up to 32
+bit that isn't too bad).
 
 * Allocations
 This used to have optional allocator arguments, then I tried anytype, and now
