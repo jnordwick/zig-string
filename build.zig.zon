@@ -3,5 +3,17 @@
     .version = "0.0.0",
 
     .dependencies = .{},
-    .paths = .{""},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE",
+        "README.org",
+        "src/allocator.zig",
+        "src/bmh.zig",
+        "src/largestring.zig",
+        "src/shiftor.zig",
+        "src/smallstring.zig",
+        "src/string.zig",
+        "src/test.zig",
+    },
 }

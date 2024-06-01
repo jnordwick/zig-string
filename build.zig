@@ -4,6 +4,13 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // The module
+    _ = b.addModule("zig-string", .{
+        .root_source_file = b.path("src/string.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const lib = b.addStaticLibrary(.{
         .name = "zig-string",
         .root_source_file = b.path("src/string.zig"),
