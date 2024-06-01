@@ -1,30 +1,43 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 
 const SmallString = @import("smallstring.zig").SmallString;
 const StringError = @import("string.zig").StringError;
+const low_mask = @import("string.zig").String.low_mask;
 
-// currently this only works on little endian machines. for big
-// endian the bit used to distinguish between large and small would
-// need to be moved to the high bit of the high byte of cap.
+comptime {
+    if (builtin.target.cpu.arch.endian() == .big)
+        @compileError("SSO presently only works in litte endian");
+    if (@sizeOf(usize) != @sizeOf(u64))
+        @compileError("usize must be u64. Not long term just need some free time.");
+}
 
-// LargeStrings are always allocated in an even size. The lowest bit
-// on the lowest byte is set to 0 to signify this is a LargeString.
-
+/// The LargeString maintains a pointer to an external buffer. The capacity
+/// must has at least one bit of String.low_mask u8 set that is used to signal
+/// this is a LargeString.
 pub const LargeString = extern struct {
     cap: u64,
-    len: u64,
     data: [*]u8,
+    len: u64,
 
     const This = @This();
+    const lowest_mask_bit = @ctz(low_mask);
+    const cap_mask: u64 = low_mask;
+    const neg_mask: u64 = @bitCast(@as(i64, -1) << @ctz(cap_mask));
 
-    fn alloc_data(cap: u64, comptime alloc: Allocator) ![]u8 {
-        const request_cap = cap + (cap & 1);
-        const data_slice = try alloc.alloc(u8, request_cap);
-        std.debug.assert(data_slice.len & 1 == 0);
+    /// allocates a slice with a minimum new_size
+    fn alloc_data(new_size: u64, comptime alloc: Allocator) ![]u8 {
+        var new_cap = new_size + (new_size >> 1);
+        if (new_size & cap_mask == 0) {
+            new_cap = (neg_mask & new_cap) | (1 << @ctz(cap_mask));
+        }
+        const data_slice = try alloc.alloc(u8, new_cap);
+        std.debug.assert(data_slice.len & cap_mask != 0);
         return data_slice;
     }
 
+    /// realloc an existing buffer, copying the old portion over
     noinline fn realloc_data(this: *This, new_cap: u64, comptime alloc: Allocator) !void {
         const alloc_slice = this.data[0..this.cap];
         const did_resize = alloc.resize(alloc_slice, new_cap);
@@ -40,7 +53,6 @@ pub const LargeString = extern struct {
     }
 
     /// create new LargeString.
-    /// cap: initial capacity. If cap is odd 1 will be added to keep it even.
     pub fn init(cap: u64, comptime alloc: Allocator) !This {
         var this: This = undefined;
         const data_slice = try alloc_data(cap, alloc);
@@ -50,11 +62,7 @@ pub const LargeString = extern struct {
         return this;
     }
 
-    /// create new LargeString with initial value
-    /// str: initial string value
-    /// cap: initial capacity. If cap is less tha the string length, the
-    /// string length will be used. If cap is odd 1 will be added to keep
-    /// it even.
+    /// create new LargeString with initial value. cap is only a suggestion
     pub fn init_copy(str: []const u8, cap: u64, comptime alloc: Allocator) !This {
         var this: This = undefined;
         const alloc_amt = @max(str.len, cap);
@@ -111,7 +119,7 @@ pub const LargeString = extern struct {
     pub fn push_back(this: *This, x: u8, comptime alloc: Allocator) !void {
         const new_len = this.len + 1;
         if (new_len > this.cap) {
-            try this.reserve(new_len * 2, alloc);
+            try this.reserve(new_len, alloc);
         }
         this.data[this.len] = x;
         this.len += 1;
@@ -120,7 +128,7 @@ pub const LargeString = extern struct {
     pub fn append(this: *This, x: u8, count: u64, comptime alloc: Allocator) !void {
         const new_len = this.len + count;
         if (new_len > this.cap) {
-            try this.realloc_data(new_len * 2, alloc);
+            try this.realloc_data(new_len, alloc);
         }
         std.debug.assert(this.len + count <= this.cap);
         const base = this.data + this.len;
@@ -134,7 +142,7 @@ pub const LargeString = extern struct {
     pub fn append_slice(this: *This, str: []const u8, comptime alloc: Allocator) !void {
         const new_len = this.len + str.len;
         if (new_len > this.cap) {
-            try this.reserve(new_len * 2, alloc);
+            try this.reserve(new_len, alloc);
         }
         std.debug.assert(this.len + str.len <= this.cap);
         @memcpy(&this.data + this.len, str);
@@ -178,6 +186,7 @@ pub const LargeString = extern struct {
         @memcpy(this.data + this.len, vals);
     }
 
+    /// remove the last char and return it
     pub fn pop(this: *This) u8 {
         this.len -= 1;
         return this.data[this.len];
@@ -199,6 +208,8 @@ pub const LargeString = extern struct {
         this.len -= 1;
     }
 
+    /// deletes an element by moving the last element into the removed position
+    /// and decreasing length by 1;
     pub fn delete_unstable(this: *This, index: usize) void {
         this.len -= 1;
         this.data[index] = this.data[this.len];

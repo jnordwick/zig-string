@@ -57,18 +57,17 @@ pub const StringError = error{
 /// situ before it spill to an external allocation. While in short string mode
 /// no allocations are done.  No checks are done anywhere yet.
 pub const String = extern union {
+    /// the top 3 bits are alawys zero for a small string
+    /// any bit set is a large string
     lowbyte: u8,
     small: SmallString,
     large: LargeString,
 
     const This = @This();
-
-    pub fn is_large(this: *const This) bool {
-        return this.lowbyte & 1 == 0;
-    }
+    pub const low_mask = 0b11100000;
 
     pub fn is_small(this: *const This) bool {
-        return this.lowbyte & 1 == 1;
+        return this.lowbyte & low_mask == 0;
     }
 
     /// create a new zero length string as a SmallString
@@ -98,13 +97,13 @@ pub const String = extern union {
     /// free its buffer if requested. If the string is too long to fit
     /// in a small string StringError.TooLargeToConvert will be returned.
     pub fn into_small(this: *This, comptime alloc: anytype) !void {
-        if (this.is_large()) {
+        if (!this.is_small()) {
             const len: u64 = this.large.len;
             if (len >= SmallString.buf_size)
                 return StringError.TooLargeToConvert;
             var slice = this.large.to_slice();
             const old_cap = this.large.cap;
-            this.small.set_length(@intCast(len));
+            this.small.len = @intCast(len);
             @memcpy(@as([*]u8, &this.small.data), slice);
             alloc.free(slice.ptr[0..old_cap]);
         }
@@ -145,7 +144,7 @@ pub const String = extern union {
 
     /// returns the length of the string
     pub fn length(this: *const This) u64 {
-        return if (this.is_small()) this.small.length() else this.large.len;
+        return if (this.is_small()) this.small.len else this.large.len;
     }
 
     pub fn reserve_more(this: *This, more: u64, comptime alloc: ?Allocator) !void {
@@ -178,17 +177,11 @@ pub const String = extern union {
     }
 
     /// appends the string to the current string spilling to a LargeString if needed
-    /// other: other string to append
-    /// alloc: can be left null if you know you will not need to grow the region or
-    /// convert to a LargeString
     pub fn append(this: *This, other: *const String, comptime alloc: ?Allocator) !void {
         return this.append_slice(other.to_const_slice(), alloc);
     }
 
     /// appends the slice to the current string spilling to a LargeString if needed
-    /// other: other string to append
-    /// alloc: can be left null if you know you will not need to grow the region or
-    /// convert to a LargeString
     pub fn append_slice(this: *This, other: []const u8, comptime alloc: ?Allocator) !void {
         try this.reserve_more(other.len, alloc);
         if (this.isSmallString()) this.small.append(other) else this.large.append_noalloc(other);
@@ -202,7 +195,7 @@ pub const String = extern union {
     /// ensures at least new_capacity total cap, but will not shribnk the cap.
     /// will spill to large string if needed.
     pub fn reserve(this: *This, new_cap: u64, comptime alloc: ?Allocator) !void {
-        if (this.is_large()) {
+        if (!this.is_small()) {
             this.large.reserve(new_cap, alloc);
         } else if (new_cap > SmallString.buf_size) {
             const str = try LargeString.from_small(&this.small, new_cap, alloc);
@@ -216,7 +209,6 @@ pub const String = extern union {
     }
 
     /// replaces part of the string with the values from the other string
-    /// index: should be less than length, but is not checked in release builds
     pub fn set(this: *This, offset: u64, other: *const String) void {
         return this.set_range(offset, other.to_const_slice());
     }

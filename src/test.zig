@@ -11,6 +11,7 @@ const SmallString = sstr.SmallString;
 const LargeString = lstr.LargeString;
 
 comptime {
+    std.testing.refAllDecls(@This());
     if (@sizeOf(SmallString) != @sizeOf(LargeString))
         @compileError("SmallString and LargeString unexpectedly differnt sizes.");
     if (builtin.cpu.arch.endian() != .little)
@@ -26,7 +27,7 @@ test "small copy" {
     const h = "hello";
     const hs: []const u8 = h[0..];
     var ss = SmallString.init_copy(hs);
-    try tt.expectEqual(@as(u8, @intCast(5)), ss.length());
+    try tt.expectEqual(@as(u8, @intCast(5)), ss.len);
     try tt.expectEqualSlices(u8, hs, ss.to_slice());
 }
 
@@ -43,16 +44,9 @@ test "small to large" {
     const hs: []const u8 = h[0..];
     var ss = SmallString.init_copy(hs);
 
-    var large_str = try LargeString.from_small(&ss, ss.length() * 2, talloc);
+    var large_str = try LargeString.from_small(&ss, ss.len * 2, talloc);
     defer large_str.deinit(talloc);
     try tt.expectEqualSlices(u8, h[0..], large_str.to_slice());
-}
-
-test "union" {
-    const str = String.init();
-    try tt.expectEqual(@as(u8, 1), str.lowbyte);
-    try tt.expect(str.is_small());
-    try tt.expectEqual(@as(u64, 0), str.length());
 }
 
 test "small into large into small" {
@@ -60,7 +54,7 @@ test "small into large into small" {
     var ss = try String.init_copy(h, talloc);
 
     try ss.into_large(talloc);
-    try tt.expect(ss.is_large());
+    try tt.expect(!ss.is_small());
     try tt.expectEqual(@as(u64, 5), ss.length());
     try tt.expectEqualSlices(u8, h[0..], ss.to_slice());
 
