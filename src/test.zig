@@ -55,12 +55,12 @@ test "small into large into small" {
 
     try ss.into_large(talloc);
     try tt.expect(!ss.is_small());
-    try tt.expectEqual(@as(u64, 5), ss.length());
+    try tt.expectEqual(@as(u32, 5), ss.length());
     try tt.expectEqualSlices(u8, h[0..], ss.to_slice());
 
     try ss.into_small(talloc);
     try tt.expect(ss.is_small());
-    try tt.expectEqual(@as(u64, 5), ss.length());
+    try tt.expectEqual(@as(u32, 5), ss.length());
     try tt.expectEqualSlices(u8, h[0..], ss.to_slice());
 }
 
