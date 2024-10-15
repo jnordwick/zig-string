@@ -32,7 +32,7 @@ I'm trying comptime Allocator with a special null_alloc that just send
 everything to unreachable. I'm trying to find a way that is both easy (many
 times you know you don't need to allocate but the function still needs one)
 and has top performance. Since these strings tend to be small, having a
-true vtable jump can begin to dominate is loop. I think this should work, but
+true vtable jump can begin to dominate in loops. I think this should work, but
 I'm still searching for that magical zero-cost for both mental load and
 function call cost.
 
@@ -41,18 +41,10 @@ It should be possible to use this for u8 numbers already if you just ignore the
 word string all over the place. It should also be possible to wrap this in a
 type function and have it use u16 or other, but it becomes much more limited and
 I think there are better ways to do small vecs. By the time you are looking at
-sizes up to u32 for a unicode code point, you're only storing 5 characters (I
-could add a dummy char to the LargeString that is there solely to get the
-SmallString up to 6 characters but that just seems trivially small to be
-useful).
-
-Smallish vectors like three u64, if the padding byte was added to large string
-would be able to fit, but those cases are probably better handled by just a
-simple [3]f64 because you aren't really growing those vectors and needing to
-worry about spill.
+sizes up to u32 for a unicode code point, you're only storing 5 characters.
 
 Having 11 bytes of UTF-16 might be useful though, but I despise UTF-16, and the
-only think I know of that uses it is Windows APIs, and 11 bytes seems too small
+only thing I know of that uses it is Windows APIs, and 11 bytes seems too small
 for filenames or such.
 
 * Usage without the union String indirection
@@ -85,10 +77,12 @@ small string hash function that is extremely quick to run because all the hash
 functions in std are more appropriate for much much longer strings like webpages
 and were absolutely dominating runtimes. I'm not sure how to add those to the
 API yet, but they will be added, more are on the way (including an N-way
-Rabin-Karp), and the code is there to use now.
+Rabin-Karp and a two-way matcher), but the code is there to use now.
 
 * TODO
 - [ ] better documentation
 - [ ] refine shift xor search, add to API
 - [ ] N-way Rabin-Karp
 - [ ] Add asserts or other safe build protections
+- [ ] get build.zig working (again)
+  - [ ] Package as a module

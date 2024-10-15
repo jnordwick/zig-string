@@ -11,7 +11,7 @@ const SmallString = sstr.SmallString;
 const LargeString = lstr.LargeString;
 
 comptime {
-    std.testing.refAllDecls(@This());
+    std.testing.refAllDeclsRecursive(@This());
     if (@sizeOf(SmallString) != @sizeOf(LargeString))
         @compileError("SmallString and LargeString unexpectedly differnt sizes.");
     if (builtin.cpu.arch.endian() != .little)

@@ -14,12 +14,28 @@ pub const to_lower_map: [256]u8 = b: {
     break :b map;
 };
 
+pub const to_upper_map: [256]u8 = b: {
+    var map: [256]u8 = [_]u8{0} ** 256;
+    for (0..256) |i| {
+        var c: u8 = @intCast(i);
+        if (c >= 'a' and c <= 'z')
+            c = (c - 'a') + 'A';
+        map[i] = c;
+    }
+    break :b map;
+};
+
 /// transformer to map uppercase to lowercase.
 pub inline fn transform_to_lower(c: u8) u8 {
     return to_lower_map[c];
 }
 
-/// does absolutely nothing
+/// transformer to map lowercase to uppercase.
+pub inline fn transform_to_upper(c: u8) u8 {
+    return to_upper_map[c];
+}
+
+/// What is it good for? Absolutely nothing.
 pub inline fn transform_ident(c: u8) u8 {
     return c;
 }
@@ -44,7 +60,7 @@ pub fn StringBase(Size_: type) type {
     return extern union {
         /// Hash context that uses a simpler hash function more appropriate for
         /// small strings
-        pub const StringHashContext = struct {
+        pub const HashContext = struct {
             pub fn hash(_: @This(), s: This) This.Size {
                 var h: This.Size = 43029;
                 for (s.to_const_slice()) |c| {
