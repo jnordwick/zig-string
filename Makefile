@@ -9,5 +9,5 @@ test:
 retest: clean test
 
 clean:
-	rm -rf zig-out zig-cache *.a *.a.o
+	rm -rf zig-out .zig-cache *.a *.a.o
 

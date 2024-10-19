@@ -1,9 +1,12 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const bstr = @import("string.zig");
-const sstr = @import("smallstring.zig");
-const lstr = @import("largestring.zig");
+pub const ballkoc = @import("allocator.zig");
+pub const bstr = @import("string.zig");
+pub const sstr = @import("smallstring.zig");
+pub const lstr = @import("largestring.zig");
+pub const bmh = @import("bmh.zig");
+pub const sor = @import("shiftor.zig");
 
 const StringError = bstr.StringError;
 const String = bstr.String;
