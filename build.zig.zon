@@ -1,6 +1,6 @@
 .{ // zig string
     .name = .zig_string,
-    .version = "0.0.1",
+    .version = "0.0.2",
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0xd2ee692e588f053c,
 
@@ -10,12 +10,11 @@
         "build.zig.zon",
         "LICENSE",
         "README.org",
-        "src/allocator.zig",
         "src/bmh.zig",
         "src/largestring.zig",
         "src/shiftor.zig",
         "src/smallstring.zig",
-        "src/string.zig",
+        "src/root.zig",
         "src/test.zig",
     },
 }
