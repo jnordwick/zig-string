@@ -4,7 +4,7 @@ const tt = std.testing;
 const root = @import("root.zig");
 
 const ShiftOr = ShiftOrType(u64, null);
-const ShiftOrNoCase = ShiftOrType(u64, std.asciiToLower);
+const ShiftOrNoCase = ShiftOrType(u64, std.ascii.toLower);
 
 fn to_ident(x: u8) u8 {
     return x;

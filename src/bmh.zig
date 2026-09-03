@@ -33,6 +33,7 @@ pub fn BoyerMooreHorspoolType(comptime tr: ?root.TransformFunc) type {
         }
 
         pub fn preprocess(this: *@This(), pat: []const u8) void {
+            std.debug.assert(pat.len > 0);
             this.pat = pat;
             for (0..this.tab.len) |i| {
                 this.tab[i] = pat.len;

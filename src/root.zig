@@ -229,7 +229,7 @@ pub const String = extern union {
 
     /// deletes a character by moving the last character to the deleted location.
     pub fn delete_unstable(this: *This, index: usize) void {
-        if (this.is_small()) this.small.delete_unstable(index) else this.largs.delete_unstable(index);
+        if (this.is_small()) this.small.delete_unstable(index) else this.large.delete_unstable(index);
     }
 
     /// delete a range of characters. will shift all other characters down. deleting
