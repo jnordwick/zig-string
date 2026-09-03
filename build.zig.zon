@@ -1,6 +1,8 @@
 .{ // zig string
-    .name = "zig-string",
-    .version = "0.0.0",
+    .name = .zig_string,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.16.0",
+    .fingerprint = 0xd2ee692e588f053c,
 
     .dependencies = .{},
     .paths = .{

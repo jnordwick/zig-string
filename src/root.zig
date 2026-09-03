@@ -1,276 +1,253 @@
 const std = @import("std");
-const cast = @import("anycast.zig").cast;
-const bitcast = @import("anycast.zig").bitcast;
 const Allocator = std.mem.Allocator;
+const fnv = std.hash.fnv;
+
+const LargeString = @import("largestring.zig").LargeString;
+const SmallString = @import("smallstring.zig").SmallString;
 
 pub const TransformFunc = fn (char: u8) u8;
 
-pub fn to_lower(c: u8) u8 {
-    return cast(u8, c + (cast(u8, c -% 'A' < 26) << 5));
-}
-
-pub fn to_upper(c: u8) u8 {
-    return cast(u8, c - (cast(u8, c -% 'a' < 26) << 5));
-}
-
-/// What is it good for? Absolutely nothing.
-pub fn to_ident(c: u8) u8 {
-    return c;
-}
-
-const SmallStringBase = @import("smallstring.zig").SmallStringBase;
-const LargeStringBase = @import("largestring.zig").LargeStringBase;
-
-pub fn sort_less_than(_: void, x: []const u8, y: []const u8) bool {
-    return std.mem.lessThan(u8, x, y);
-}
-
 pub const StringError = error{
     TooLargeToConvert,
+    EmptyString,
     NoAllocator,
 } || Allocator.Error;
 
 /// A string with short string optimization. It can store up to 23 bytes in
 /// situ before it spill to an external allocation. While in short string mode
 /// no allocations are done.  No checks are done anywhere yet.
-pub const String = StringBase(u64);
-pub fn StringBase(Size_: type) type {
-    return extern union {
-        /// Hash context that uses a simpler hash function more appropriate for
-        /// small strings
-        pub const HashContext = struct {
-            pub fn hash(_: @This(), s: This) This.Size {
-                var h: This.Size = 43029;
-                for (s.to_const_slice()) |c| {
-                    h = (h * 65) ^ c;
-                }
-                return h;
+pub const String = extern union {
+    const This = @This();
+
+    /// Hash context that uses a simpler FNV-1ar for small strings. Subject to change
+    /// to something more ASCII specific given the low entropy in short text strings.
+    pub const Hasher32 = This.HashContext(u32, fnv.Fnv1a_32);
+    pub const Hasher64 = This.HashContext(u64, fnv.Fnv1a_64);
+
+    pub fn HashContent(Return: type, Hasher: type) type {
+        return struct {
+            pub fn hash(_: @This(), s: *This) Return {
+                const hh: Hasher = .init();
+                hh.update(s.const_slice());
+                return hh.final();
             }
-            pub fn eql(_: @This(), x: This, y: This) bool {
-                return std.mem.eql(u8, x.to_const_slice(), y.to_const_slice());
+            pub fn eql(_: @This(), x: *This, y: *This) bool {
+                return x.eql(y);
             }
         };
+    }
 
-        const This = @This();
-        const Size = Size_;
+    pub const low_mask: u8 = 0b11100000;
 
-        const LargeString = LargeStringBase(u64);
-        const SmallString = SmallStringBase(@sizeOf(LargeString));
+    /// the top 3 bits are alawys zero for a small string
+    /// any bit set is a large string
+    lowbyte: u8,
+    small: SmallString,
+    large: LargeString,
 
-        pub const low_mask: u8 = 0b11100000;
+    pub fn is_small(this: *const This) bool {
+        return this.lowbyte & low_mask == 0;
+    }
 
-        /// the top 3 bits are alawys zero for a small string
-        /// any bit set is a large string
-        lowbyte: u8,
-        small: SmallString,
-        large: LargeString,
+    /// create a new zero length string as a SmallString
+    pub fn init() This {
+        return .{ .small = SmallString.init() };
+    }
 
-        pub fn is_small(this: *const This) bool {
-            return this.lowbyte & low_mask == 0;
+    /// create a new string from a slice
+    pub fn init_copy(alloc: Allocator, str: []const u8) !This {
+        std.debug.assert(str.len < std.math.maxInt(usize) - 1);
+        const slen: usize = @intCast(str.len);
+        if (slen <= SmallString.buf_size) {
+            return .{ .small = SmallString.init_copy(str) };
+        } else {
+            return .{ .large = try LargeString.init_copy(alloc, str, slen * 2) };
         }
+    }
 
-        /// create a new zero length string as a SmallString
-        pub fn init() This {
-            return .{ .small = SmallString.init() };
+    /// If not already a LargeString, will convert this to one with the
+    /// same capacity as the string length.
+    pub fn into_large(this: *This, alloc: Allocator) !void {
+        if (this.is_small()) {
+            const large_str = try LargeString.from_small(alloc, &this.small, 0);
+            this.large = large_str;
         }
+    }
 
-        /// create a new string from a slice
-        pub fn init_copy(str: []const u8, comptime alloc: anytype) !This {
-            std.debug.assert(str.len < std.math.maxInt(Size) - 1);
-            const slen: Size = @intCast(str.len);
-            if (slen <= SmallString.buf_size) {
-                return .{ .small = SmallString.init_copy(str) };
-            } else {
-                return .{ .large = try LargeString.init_copy(str, slen * 2, alloc) };
-            }
+    /// If not already a SmallString will convert the LargeString and
+    /// free its buffer if requested. If the string is too long to fit
+    /// in a small string StringError.TooLargeToConvert will be returned.
+    pub fn into_small(this: *This, alloc: Allocator) !void {
+        if (!this.is_small()) {
+            const len: usize = this.large.len;
+            if (len > SmallString.buf_size)
+                return StringError.TooLargeToConvert;
+            var sl = this.large.slice();
+            const old_cap = this.large.cap;
+            this.small.len = @intCast(len);
+            @memcpy(this.small.buf[0..len], sl);
+            alloc.free(sl.ptr[0..old_cap]);
         }
+    }
 
-        /// If not already a LargeString, will convert this to one with the
-        /// same capacity as the string length.
-        pub fn into_large(this: *This, comptime alloc: anytype) !void {
-            if (this.is_small()) {
-                const large_str = try LargeString.from_small(&this.small, 0, alloc);
+    pub fn substr(this: *const This, alloc: Allocator, offset: usize, len: usize) String {
+        const sub: []u8 = this.const_subslice(offset, len);
+        if (len <= SmallString.buf_size) {
+            return .{ .small = SmallString.init_copy(sub) };
+        } else {
+            return .{ .large = LargeString.init_copy(alloc, sub, 0) };
+        }
+    }
+
+    /// returns a subslice of the string. if the string is ever converted from small to large or has to be
+    /// reallocated to a different memory location, this slice will be invaid.
+    pub fn subslice(this: *This, offset: usize, len: usize) []u8 {
+        return if (this.is_small()) this.small.subslice(offset, len) else this.large.subslice(offset, len);
+    }
+
+    /// returns a const subslice of the string. if the string is ever converted from small to large or has to be
+    /// reallocated to a different memory location, this slice will be invaid.
+    pub fn const_subslice(this: *const This, offset: usize, len: usize) []const u8 {
+        return if (this.is_small()) this.small.const_subslice(offset, len) else this.large.const_subslice(offset, len);
+    }
+
+    /// return the string as a slice. if the string is ever converted from small to large or has to be
+    /// reallocated to a different memory location, this slice will be invaid.
+    pub fn slice(this: *This) []u8 {
+        return if (this.is_small()) this.small.slice() else this.large.slice();
+    }
+
+    /// return the string as a const slice. if the string is ever converted from small to large or has to be
+    /// reallocated to a different memory location, this slice will be invaid.
+    pub fn const_slice(this: *const This) []const u8 {
+        return if (this.is_small()) this.small.const_slice() else this.large.const_slice();
+    }
+
+    /// returns the length of the string
+    pub fn length(this: *const This) usize {
+        return if (this.is_small()) this.small.len else this.large.len;
+    }
+
+    pub fn reserve_more(this: *This, alloc: Allocator, more: usize) !void {
+        if (this.is_small()) {
+            const len = this.small.length() + more;
+            if (len > SmallString.buf_size) {
+                const large_str = try LargeString.from_small(alloc, this, len * 2);
                 this.large = large_str;
             }
-        }
-
-        /// If not already a SmallString will convert the LargeString and
-        /// free its buffer if requested. If the string is too long to fit
-        /// in a small string StringError.TooLargeToConvert will be returned.
-        pub fn into_small(this: *This, comptime alloc: anytype) !void {
-            if (!this.is_small()) {
-                const len: Size = this.large.len;
-                if (len >= SmallString.buf_size)
-                    return StringError.TooLargeToConvert;
-                var slice = this.large.to_slice();
-                const old_cap = this.large.cap;
-                this.small.len = @intCast(len);
-                @memcpy(@as([*]u8, &this.small.data), slice);
-                alloc.free(slice.ptr[0..old_cap]);
+        } else {
+            const len = this.large.len + more;
+            if (len > this.large.cap) {
+                try this.large.reserve(alloc, len * 2);
             }
         }
+    }
 
-        pub fn substr(this: *const This, offset: Size, len: Size, comptime alloc: anytype) String {
-            const sub: []u8 = this.const_subslice(offset, len);
-            if (len <= SmallString.buf_size) {
-                return .{ .small = SmallString.init_copy(sub) };
-            } else {
-                return .{ .large = LargeString.init_copy(sub, 0, alloc) };
-            }
+    /// a simple method ao append a char
+    pub fn push_back(this: *This, alloc: Allocator, x: u8) !void {
+        return this.append_char(alloc, x, 1);
+    }
+
+    /// append count of char x
+    pub fn append_char(this: *This, alloc: Allocator, x: u8, count: usize) !void {
+        try this.reserve_more(alloc, count);
+        if (this.is_small()) this.small.append_char(x, count) else this.large.append_char(x, count);
+    }
+
+    /// appends the string to the current string
+    pub fn append(this: *This, alloc: Allocator, other: *const String) !void {
+        return this.append_slice(alloc, other.const_slice());
+    }
+
+    /// appends the slice to the current string spilling to a LargeString if needed
+    pub fn append_slice(this: *This, alloc: Allocator, other: []const u8) !void {
+        try this.reserve_more(other.len, alloc);
+        if (this.is_small()) this.small.append_slice(other) else this.large.append_slice(other);
+    }
+
+    /// sets the length to zero but leaves the rest of the struct for reuse
+    pub fn clear(this: *This) void {
+        if (this.is_small()) this.small.clear() else this.large.clear();
+    }
+
+    /// ensures at least new_capacity total cap, but will not shribnk the cap.
+    /// will spill to large string if needed.
+    pub fn reserve(this: *This, alloc: Allocator, req_cap: usize) !void {
+        if (!this.is_small()) {
+            this.large.reserve(alloc, req_cap);
+        } else if (req_cap > SmallString.buf_size) {
+            const str = try LargeString.from_small(alloc, &this.small, req_cap);
+            this.large = str;
         }
+    }
 
-        /// returns a subslice of the string. if the string is ever converted from small to large or has to be
-        /// reallocated to a different memory location, this slice will be invaid.
-        pub fn subslice(this: *This, offset: Size, len: Size) []u8 {
-            return if (this.is_small()) this.small.subslice(offset, len) else this.large.subslice(offset, len);
-        }
+    /// Returns byte at position
+    pub fn get_char(this: *const This, index: usize) u8 {
+        return if (this.is_small()) this.small.get_char(index) else this.large.get_char(index);
+    }
 
-        /// returns a const subslice of the string. if the string is ever converted from small to large or has to be
-        /// reallocated to a different memory location, this slice will be invaid.
-        pub fn const_subslice(this: *const This, offset: Size, len: Size) []const u8 {
-            return if (this.is_small()) this.small.const_subslice(offset, len) else this.large.const_subslice(offset, len);
-        }
+    /// replaces part of the string with the values from the other string
+    pub fn set(this: *This, offset: usize, other: *const String) void {
+        return this.set_range(offset, other.const_slice());
+    }
 
-        /// return the string as a slice. if the string is ever converted from small to large or has to be
-        /// reallocated to a different memory location, this slice will be invaid.
-        pub fn to_slice(this: *This) []u8 {
-            return if (this.is_small()) this.small.to_slice() else this.large.to_slice();
-        }
+    /// sets a range of values starting at offset in string
+    pub fn set_range(this: *This, offset: usize, vals: []const u8) void {
+        if (this.is_small()) this.small.set_range(offset, vals) else this.large.set_range(offset, vals);
+    }
 
-        /// return the string as a const slice. if the string is ever converted from small to large or has to be
-        /// reallocated to a different memory location, this slice will be invaid.
-        pub fn to_const_slice(this: *const This) []const u8 {
-            return if (this.is_small()) this.small.to_const_slice() else this.large.to_const_slice();
-        }
+    /// sets the index of buffer
+    pub fn set_char(this: *This, index: usize, val: u8) void {
+        if (this.is_small()) this.small.set_char(index, val) else this.large.set_char(index, val);
+    }
 
-        /// returns the length of the string
-        pub fn length(this: *const This) Size {
-            return if (this.is_small()) this.small.len else this.large.len;
-        }
+    pub fn pop(this: *This) u8 {
+        return if (this.is_small()) this.small.pop() else this.largs.pop();
+    }
 
-        pub fn reserve_more(this: *This, more: Size, comptime alloc: ?Allocator) !void {
-            if (this.isSmallString()) {
-                const len = this.small.length() + more;
-                if (len > SmallString.buf_size) {
-                    if (alloc) |a| {
-                        const large_str = try LargeString.from_small(this, len * 2, a);
-                        this.large = large_str;
-                    } else {
-                        return StringError.NoAllocator;
-                    }
-                }
-            } else {
-                const len = this.large.len + more;
-                if (len > this.large.cap) {
-                    try this.large.reserve(len * 2, alloc);
-                }
-            }
-        }
+    /// delete a single characters. will shift all other characters down. deleting
+    /// from the end of the string doesn't require any shifting.
+    pub fn delete(this: *This, index: usize) void {
+        if (this.is_small()) this.small.delete(index) else this.large.delete(index);
+    }
 
-        pub fn push_back(this: *This, x: u8, comptime alloc: ?Allocator) !void {
-            try this.reserve_more(@sizeOf(x), alloc);
-            if (this.is_small()) this.small.push_back(x) else this.large.push_back_noalloc();
-        }
+    /// deletes a character by moving the last character to the deleted location.
+    pub fn delete_unstable(this: *This, index: usize) void {
+        if (this.is_small()) this.small.delete_unstable(index) else this.largs.delete_unstable(index);
+    }
 
-        pub fn append1(this: *This, x: u8, count: Size, comptime alloc: ?Allocator) !void {
-            try this.reserve_more(count, alloc);
-            if (this.isSmallString()) this.small.append1(x, count) else this.large.append1_noalloc(x, count);
-        }
+    /// delete a range of characters. will shift all other characters down. deleting
+    /// from the end of the string doesn
+    /// any deallocations or convert a large string to a small string.
+    pub fn delete_range(this: *This, offset: usize, len: usize) void {
+        if (this.is_small()) this.small.delete_range(offset, len) else this.large.delete_range(offset, len);
+    }
 
-        /// appends the string to the current string spilling to a LargeString if needed
-        pub fn append(this: *This, other: *const String, comptime alloc: ?Allocator) !void {
-            return this.append_slice(other.to_const_slice(), alloc);
-        }
+    fn format(this: *const String, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        try std.fmt.formatType(this.const_slice(), fmt, options, writer, 1);
+    }
 
-        /// appends the slice to the current string spilling to a LargeString if needed
-        pub fn append_slice(this: *This, other: []const u8, comptime alloc: ?Allocator) !void {
-            try this.reserve_more(other.len, alloc);
-            if (this.isSmallString()) this.small.append(other) else this.large.append_noalloc(other);
-        }
+    pub fn eql(this: *const String, that: *const String) bool {
+        return std.mem.eql(u8, this.const_slice(), that.const_slice());
+    }
 
-        /// sets the length to zero but leaves the rest of the struct for reuse
-        pub fn clear(this: *This) void {
-            if (this.isSmallStrig()) this.small.clear() else this.large.clear();
-        }
+    pub fn ieql(this: *const String, that: *const String, tr: TransformFunc) bool {
+        const xsl = this.const_slice();
+        const ysl = that.const_slice();
 
-        /// ensures at least new_capacity total cap, but will not shribnk the cap.
-        /// will spill to large string if needed.
-        pub fn reserve(this: *This, new_cap: Size, comptime alloc: ?Allocator) !void {
-            if (!this.is_small()) {
-                this.large.reserve(new_cap, alloc);
-            } else if (new_cap > SmallString.buf_size) {
-                const str = try LargeString.from_small(&this.small, new_cap, alloc);
-                this.large = str;
-            }
-        }
-
-        /// Returns byte at position
-        pub fn get1(this: *const This, index: Size) u8 {
-            return if (this.is_small()) this.small.get(index) else this.large.get(index);
-        }
-
-        /// replaces part of the string with the values from the other string
-        pub fn set(this: *This, offset: Size, other: *const String) void {
-            return this.set_range(offset, other.to_const_slice());
-        }
-
-        /// sets a range of values starting at offset in string
-        pub fn set_range(this: *This, offset: Size, vals: []const u8) void {
-            if (this.is_small()) this.small.set_range(offset, vals) else this.large.set_range(offset, vals);
-        }
-
-        /// sets the index of buffer
-        pub fn set1(this: *This, index: Size, val: u8) void {
-            if (this.is_small()) this.small.set1(index, val) else this.large.set1(index, val);
-        }
-
-        pub fn pop(this: *This) u8 {
-            if (this.is_small()) this.small.pop() else this.largs.pop();
-        }
-
-        /// delete a single characters. will shift all other characters down. deleting
-        /// from the end of the string doesn't require any shifting.
-        pub fn delete(this: *This, index: Size) void {
-            if (this.is_small()) this.small.delete(index) else this.large.delete(index);
-        }
-
-        pub fn delete_unstable(this: *This, index: Size) void {
-            if (this.is_small()) this.small.delete_unstable(index) else this.largs.delete_unstable(index);
-        }
-
-        /// delete a range of characters. will shift all other characters down. deleting
-        /// from the end of the string doesn't require any shifting. This will not cause
-        /// any deallocations or convert a large string to a small string.
-        pub fn delete_range(this: *This, offset: Size, len: Size) void {
-            if (this.is_small()) this.small.delete_range(offset, len) else this.large.delete_range(offset, len);
-        }
-
-        fn format(this: *const String, comptime fmt: []const u8, options: std.fmt.FormatOptions, out_stream: anytype) !void {
-            try std.fmt.formatType(this.to_const_slice(), fmt, options, out_stream, 1);
-        }
-
-        pub fn eql(this: *const String, that: *const String) bool {
-            return std.mem.eql(this.to_const_slice(), that, to_const_slice());
-        }
-
-        pub fn ieql(this: *const String, that: *const String, tr: TransformFunc) bool {
-            const xsl = this.to_const_slice();
-            const ysl = that.to_const_slice();
-
-            if (xsl.len != ysl.len)
+        if (xsl.len != ysl.len)
+            return false;
+        for (xsl, ysl) |x, y| {
+            if (tr(x) != tr(y))
                 return false;
-            for (xsl, ysl) |x, y| {
-                if (tr(x) != tr(y))
-                    return false;
-            }
-            return true;
         }
+        return true;
+    }
 
-        pub fn transform(this: *String, tr: TransformFunc) void {
-            var sl = this.to_slice();
-            for (0..sl.len) |i| {
-                sl[i] = tr(sl[i]);
-            }
+    pub fn transform(this: *String, tr: TransformFunc) void {
+        var sl = this.to_slice();
+        for (0..sl.len) |i| {
+            sl[i] = tr(sl[i]);
         }
-    };
-}
+    }
+};

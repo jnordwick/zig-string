@@ -1,10 +1,14 @@
+const root = @import("root.zig");
 const std = @import("std");
-const str = @import("string.zig");
 
 const BoyerMooreHorspool = BoyerMooreHorspoolType(null);
-const BoyerMooreHorspoolNoCase = BoyerMooreHorspoolType(str.transform_to_lower);
+const BoyerMooreHorspoolNoCase = BoyerMooreHorspoolType(std.ascii.toLower);
 
-pub fn eql_tr(xs: []const u8, ys: []const u8, comptime tr: str.TransformFunc) bool {
+fn to_ident(x: u8) u8 {
+    return x;
+}
+
+pub fn eql_tr(xs: []const u8, ys: []const u8, comptime tr: root.TransformFunc) bool {
     if (xs.len != ys.len)
         return false;
     for (xs, ys) |x, y| {
@@ -14,10 +18,10 @@ pub fn eql_tr(xs: []const u8, ys: []const u8, comptime tr: str.TransformFunc) bo
     return true;
 }
 
-pub fn BoyerMooreHorspoolType(comptime tr: ?str.TransformFunc) type {
+pub fn BoyerMooreHorspoolType(comptime tr: ?root.TransformFunc) type {
     return struct {
         const alpha_size = 256;
-        const trfn: str.TransformFunc = tr orelse str.transform_ident;
+        const trfn: root.TransformFunc = tr orelse to_ident;
 
         tab: [alpha_size]usize,
         pat: []const u8,
@@ -41,7 +45,7 @@ pub fn BoyerMooreHorspoolType(comptime tr: ?str.TransformFunc) type {
         pub fn match(this: *@This(), text: []const u8) usize {
             var p: usize = 0;
             while (p + this.pat.len <= text.len) {
-                if (trfn == str.transform_ident) {
+                if (trfn == to_ident) {
                     if (std.mem.eql(u8, text[p .. p + this.pat.len], this.pat))
                         return p;
                 } else {

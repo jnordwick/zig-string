@@ -1,8 +1,14 @@
 const std = @import("std");
-const str = @import("string.zig");
+const tt = std.testing;
+
+const root = @import("root.zig");
 
 const ShiftOr = ShiftOrType(u64, null);
-const ShiftOrNoCase = ShiftOrType(u64, str.transform_to_lower);
+const ShiftOrNoCase = ShiftOrType(u64, std.asciiToLower);
+
+fn to_ident(x: u8) u8 {
+    return x;
+}
 
 /// Create a Shoft Or matcher. This is a bit parallelism string matcher
 /// that runs in O(n) time where n is the length of the text. There is
@@ -24,17 +30,17 @@ const ShiftOrNoCase = ShiftOrType(u64, str.transform_to_lower);
 /// longest pattern the matcher will work with.
 /// tr: An inlineable function body that all characters will be filtered
 /// trough. It filters both the pattern and the text. see: transform_to_lower
-pub fn ShiftOrType(comptime MaskT: type, comptime tr: ?str.TransformFunc) type {
+pub fn ShiftOrType(comptime MaskT: type, comptime tr: ?root.TransformFunc) type {
     const ti = @typeInfo(MaskT);
-    if (ti != .Int or ti.Int.signedness != .unsigned)
+    if (ti != .int or ti.int.signedness != .unsigned)
         @compileError("ShiftOr MaskT must be an unsigned int with bit width of at least the max pattern length.");
 
     return struct {
         pub const Mask = MaskT;
-        pub const mask_bits = @typeInfo(Mask).Int.bits;
+        pub const mask_bits = @typeInfo(Mask).int.bits;
         pub const Shift = std.math.Log2Int(Mask);
 
-        pub const trfn: str.TransformFunc = tr orelse str.transform_ident;
+        pub const trfn: root.TransformFunc = tr orelse to_ident;
 
         mask: [256]Mask = [_]Mask{0} ** 256,
         final: Mask = undefined,
@@ -68,7 +74,7 @@ pub fn ShiftOrType(comptime MaskT: type, comptime tr: ?str.TransformFunc) type {
             this.final = @as(Mask, 1) << @as(Shift, @intCast(this.patlen - 1));
             for (0..pattern.len) |i| {
                 const shift = @as(Mask, 1) << @as(Shift, @intCast(i));
-                this.mask[trfn(pattern[i])] = this.mask[trfn(pattern[i])] | shift;
+                this.mask[trfn(pattern[i])] |= shift;
             }
         }
 
@@ -92,8 +98,6 @@ pub fn ShiftOrType(comptime MaskT: type, comptime tr: ?str.TransformFunc) type {
     };
 }
 
-const tt = std.testing;
-
 test "search" {
     var s = "wkkcjehasdfwecwee";
     var r = ShiftOr.search("asdf", s);
@@ -105,7 +109,7 @@ test "search" {
 }
 
 test "seach32 caseless" {
-    const SO = ShiftOrType(u32, str.transform_to_lower);
+    const SO = ShiftOrType(u32, std.ascii.toLower);
     var s = "wkkCjehAsdFWECwee";
     var r = SO.search("aSDf", s);
     try tt.expectEqual(@as(usize, 7), r);
