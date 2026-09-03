@@ -11,6 +11,11 @@ pub const StringError = error{
     NoAllocator,
 } || Allocator.Error;
 
+/// hash table using small string hashing function
+pub fn StringHashMap(comptime V: type) type {
+    return std.HashMap(String, V, String.HashContext32, 80);
+}
+
 /// A string with short string optimization. It can store up to 23 bytes in
 /// situ before it spill to an external allocation. While in short string mode
 /// no allocations are done.  No checks are done anywhere yet.
@@ -19,18 +24,18 @@ pub const String = extern union {
 
     /// Hash context that uses a simpler FNV-1ar for small strings. Subject to change
     /// to something more ASCII specific given the low entropy in short text strings.
-    pub const Hasher32 = This.HashContext(u32, std.hash.Fnv1a_32);
-    pub const Hasher64 = This.HashContext(u64, std.hash.Fnv1a_64);
+    pub const HashContext32 = This.HashContext(u32, std.hash.Fnv1a_32);
+    pub const HashContext64 = This.HashContext(u64, std.hash.Fnv1a_64);
 
     pub fn HashContext(Return: type, Hasher: type) type {
         return struct {
-            pub fn hash(_: @This(), s: *const This) Return {
+            pub fn hash(_: @This(), s: This) Return {
                 var hh: Hasher = .init();
                 hh.update(s.const_slice());
                 return hh.final();
             }
-            pub fn eql(_: @This(), x: *const This, y: *const This) bool {
-                return x.eql(y);
+            pub fn eql(_: @This(), x: This, y: This) bool {
+                return x.eql(&y);
             }
         };
     }
@@ -261,6 +266,10 @@ pub const String = extern union {
         }
     }
 };
+
+// ---------------------------------
+// Test
+// ---------------------------------
 
 const testing = std.testing;
 
@@ -645,9 +654,22 @@ test "hash equality" {
     var b = try String.init_copy(testing.allocator, "hello");
     defer b.deinit(testing.allocator);
 
-    const h32 = String.Hasher32{};
-    const h64 = String.Hasher64{};
+    const h32 = String.HashContext32{};
+    const h64 = String.HashContext64{};
 
-    try testing.expectEqual(h32.hash(&a), h32.hash(&b));
-    try testing.expectEqual(h64.hash(&a), h64.hash(&b));
+    try testing.expectEqual(h32.hash(a), h32.hash(b));
+    try testing.expectEqual(h64.hash(a), h64.hash(b));
+}
+
+test "full hash" {
+    var map: StringHashMap(u32) = .init(testing.allocator);
+    defer map.deinit();
+
+    try map.put(try String.init_copy(testing.allocator, "one"), 1);
+    try map.put(try String.init_copy(testing.allocator, "two"), 2);
+    try map.put(try String.init_copy(testing.allocator, "three"), 3);
+
+    try testing.expect(map.get(try String.init_copy(testing.allocator, "one")).? == 1);
+    try testing.expect(map.get(try String.init_copy(testing.allocator, "two")).? == 2);
+    try testing.expect(map.get(try String.init_copy(testing.allocator, "three")).? == 3);
 }
