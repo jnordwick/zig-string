@@ -27,7 +27,6 @@ pub const SmallString = extern struct {
     /// returns a subslice of the string. if the string is ever converted from small to large or has to be
     /// reallocated to a different memory location, this slice will be invaid.
     pub fn subslice(this: *This, offset: usize, len: usize) []u8 {
-        std.debug.assert(offset <= this.len);
         std.debug.assert(offset + len <= this.len);
         return this.buf[offset .. offset + len];
     }
@@ -35,7 +34,6 @@ pub const SmallString = extern struct {
     /// returns a const subslice of the string. if the string is ever converted from small to large or has to be
     /// reallocated to a different memory location, this slice will be invaid.
     pub fn const_subslice(this: *const This, offset: usize, len: usize) []const u8 {
-        std.debug.assert(offset <= this.len);
         std.debug.assert(offset + len <= this.len);
         return this.buf[offset .. offset + len];
     }
@@ -50,12 +48,14 @@ pub const SmallString = extern struct {
         return this.buf[0..this.len];
     }
 
+    /// append char to buffer
     pub fn push_back(this: *This, x: u8) void {
         std.debug.assert(this.len < buf_size);
         this.buf[this.len] = x;
         this.len += 1;
     }
 
+    /// remove last char from buffer. returns null on empty string
     pub fn pop(this: *This) ?u8 {
         if (this.len == 0) return null;
         this.len -= 1;

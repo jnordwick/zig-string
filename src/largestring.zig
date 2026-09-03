@@ -84,7 +84,6 @@ pub const LargeString = extern struct {
     /// returns a subslice of the string. if the string is ever converted from small to large or has to be
     /// reallocated to a different memory location, this slice will be invaid.
     pub fn subslice(this: *This, offset: usize, len: usize) []u8 {
-        std.debug.assert(offset < this.len);
         std.debug.assert(offset + len <= this.len);
         return this.buf[offset .. offset + len];
     }
@@ -92,7 +91,6 @@ pub const LargeString = extern struct {
     /// returns a const subslice of the string. if the string is ever converted from small to large or has to be
     /// reallocated to a different memory location, this slice will be invaid.
     pub fn const_subslice(this: *const This, offset: usize, len: usize) []const u8 {
-        std.debug.assert(offset < this.len);
         std.debug.assert(offset + len <= this.len);
         return this.buf[offset .. offset + len];
     }
@@ -505,10 +503,8 @@ test "LargeString delete_unstable" {
 
     s.delete_unstable(1);
     try expectString(&s, "aecd");
-
     s.delete_unstable(0);
     try expectString(&s, "dec");
-
     s.delete_unstable(s.len - 1);
     try expectString(&s, "de");
 }
@@ -518,7 +514,6 @@ test "LargeString capacity invariant" {
     defer s.deinit(std.testing.allocator);
 
     try std.testing.expect(s.cap & LargeString.cap_mask != 0);
-
     for (0..1024) |n| {
         try s.reserve(std.testing.allocator, n);
         try std.testing.expect(s.cap >= n);

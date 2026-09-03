@@ -8,7 +8,6 @@ pub const TransformFunc = fn (char: u8) u8;
 
 pub const StringError = error{
     TooLargeToConvert,
-    EmptyString,
     NoAllocator,
 } || Allocator.Error;
 
@@ -302,43 +301,43 @@ test "init_copy spills at 24 bytes" {
 }
 
 test "push_back across SSO boundary" {
+    const input = "123456789012345678901234";
     var s = String.init();
     defer s.deinit(testing.allocator);
 
-    for ("123456789012345678901234") |c| {
+    for (input) |c| {
         try s.push_back(testing.allocator, c);
     }
 
     try testing.expect(!s.is_small());
-    try testing.expectEqualStrings("123456789012345678901234", s.const_slice());
+    try testing.expectEqualStrings(input, s.const_slice());
 
     // Verify the spill didn't corrupt anything already present.
     try s.push_back(testing.allocator, 'X');
-    try testing.expectEqualStrings("123456789012345678901234X", s.const_slice());
+    try testing.expectEqualStrings(input ++ "X", s.const_slice());
 }
 
 test "append_char across SSO boundary" {
+    const input = "xxxxxxxxxxxxxxxxxxxxxx";
     var s = String.init();
     defer s.deinit(testing.allocator);
 
     try s.append_char(testing.allocator, 'x', 23);
     try testing.expect(s.is_small());
-    try testing.expectEqualStrings("xxxxxxxxxxxxxxxxxxxxxxx", s.const_slice());
+    try testing.expectEqualStrings(input ++ "x", s.const_slice());
 
     try s.append_char(testing.allocator, 'y', 1);
     try testing.expect(!s.is_small());
-    try testing.expectEqualStrings("xxxxxxxxxxxxxxxxxxxxxxxy", s.const_slice());
+    try testing.expectEqualStrings(input ++ "xy", s.const_slice());
 }
 
 test "append small to small" {
     var s = try String.init_copy(testing.allocator, "hello");
     defer if (!s.is_small()) s.large.deinit(testing.allocator);
-
     var other = try String.init_copy(testing.allocator, " world");
     defer if (!other.is_small()) other.large.deinit(testing.allocator);
 
     try s.append(testing.allocator, &other);
-
     try testing.expect(s.is_small());
     try testing.expectEqualStrings("hello world", s.const_slice());
 }
@@ -348,12 +347,10 @@ test "append causing spill" {
     const n2 = "90123456";
     var s = try String.init_copy(testing.allocator, n1);
     defer if (!s.is_small()) s.large.deinit(testing.allocator);
-
     var other = try String.init_copy(testing.allocator, n2);
     defer if (!other.is_small()) other.large.deinit(testing.allocator);
 
     try s.append(testing.allocator, &other);
-
     try testing.expect(!s.is_small());
     try testing.expectEqualStrings(n1 ++ n2, s.const_slice());
 }
@@ -361,7 +358,6 @@ test "append causing spill" {
 test "append large to large" {
     const aaa = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const bbb = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-
     var s = try String.init_copy(testing.allocator, aaa);
     defer s.deinit(testing.allocator);
     var other = try String.init_copy(testing.allocator, bbb);
@@ -375,7 +371,6 @@ test "append large to large" {
 test "reserve crosses SSO boundary" {
     var s = String.init();
     defer s.deinit(testing.allocator);
-
     try s.append_slice(testing.allocator, "hello");
     try s.reserve(testing.allocator, 100);
 
@@ -385,18 +380,17 @@ test "reserve crosses SSO boundary" {
 }
 
 test "reserve does not shrink" {
+    const input = "123456789012345678901234";
     var s = try String.init_copy(
         testing.allocator,
-        "123456789012345678901234",
+        input,
     );
     defer s.large.deinit(testing.allocator);
-
     const old_cap = s.large.cap;
 
     try s.reserve(testing.allocator, old_cap / 2);
-
     try testing.expectEqual(old_cap, s.large.cap);
-    try testing.expectEqualStrings("123456789012345678901234", s.const_slice());
+    try testing.expectEqualStrings(input, s.const_slice());
 }
 
 test "into_large" {
@@ -404,9 +398,7 @@ test "into_large" {
     defer s.large.deinit(testing.allocator);
 
     try testing.expect(s.is_small());
-
     try s.into_large(testing.allocator);
-
     try testing.expect(!s.is_small());
     try testing.expect(s.large.cap >= s.length());
     try testing.expectEqualStrings("hello", s.const_slice());
@@ -428,10 +420,9 @@ test "into_large is no-op for large string" {
 }
 
 test "into_small converts large string" {
-    var s = try String.init_copy(
-        testing.allocator,
-        "123456789012345678901234",
-    );
+    const a = "123456789012345678901234";
+    var s = try String.init_copy(std.testing.allocator, a);
+    defer s.deinit(std.testing.allocator);
 
     try testing.expectEqual(@as(usize, 24), s.length());
     try testing.expect(!s.is_small());
