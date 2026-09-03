@@ -45,3 +45,11 @@ remember why I added that. I had a reason for it at one point.
 - [ ] refine shift xor search, add to API
 - [ ] N-way Rabin-Karp
 - [ ] Add asserts or other safe build protections
+
+* AI
+Most of the tests are written by an LLM. None of the code (it was
+written mostly before LLMs were a thing), and the few changes I was
+using it for, I had to edit heavily bc LLMs write extremely average
+code. I'll probably get an LLM to generate docs for me too if I
+decide to.
+
