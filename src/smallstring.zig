@@ -2,6 +2,7 @@ const std = @import("std");
 
 const LargeString = @import("largestring.zig").LargeString;
 const StringError = @import("root.zig").StringError;
+const String = @import("root").String;
 
 pub const SmallString = extern struct {
     const This = @This();
@@ -17,11 +18,14 @@ pub const SmallString = extern struct {
 
     /// creates a small string from the supplied slice. no length
     /// checks are done. It is the callers responsibility to ensure it fits.
-    pub fn init_copy(str: []const u8) This {
-        std.debug.assert(str.len <= buf_size);
+    pub fn from_slice(str: []const u8) This {
         var s = This{ .len = @intCast(str.len), .buf = undefined };
         @memcpy(@as([*]u8, @ptrCast(&s.buf)), str);
         return s;
+    }
+
+    pub fn as_string(this: This) String {
+        return @bitCast(this);
     }
 
     /// returns a subslice of the string. if the string is ever converted from small to large or has to be
@@ -102,22 +106,7 @@ pub const SmallString = extern struct {
     /// from the end of the string doesn't require any shifting.
     /// index: the character to remove
     pub fn delete(this: *This, index: usize) void {
-        const cur_len = this.len;
-        if (index >= cur_len) return;
-        if (index != cur_len - 1) {
-            const copy_len = cur_len - index - 1;
-            const too_base = @as([*]u8, &this.buf) + index;
-            const too_slice = too_base[0..copy_len];
-            const from_base = too_base + 1;
-            const from_slice = from_base[0..copy_len];
-            std.mem.copyForwards(u8, too_slice, from_slice);
-        }
-        this.len = cur_len - 1;
-    }
-
-    pub fn delete_unstable(this: *This, index: usize) void {
-        this.len -= 1;
-        this.buf[index] = this.buf[this.len];
+        this.delete_range(index, 1);
     }
 
     /// delete a range of characters. will shift all other characters down. deleting
@@ -126,8 +115,7 @@ pub const SmallString = extern struct {
     /// len: how many characters to delete. If this extends the range past len only
     /// characters up to the length of the string will be deleted.
     pub fn delete_range(this: *This, offset: usize, len: usize) void {
-        if (offset >= this.len or len == 0)
-            return;
+        if (offset >= this.len or len == 0) return;
         if (offset + len >= this.len) {
             this.len = @intCast(offset);
             return;
@@ -138,10 +126,15 @@ pub const SmallString = extern struct {
         std.mem.copyForwards(u8, dst, src);
         this.len = @intCast(this.len - len);
     }
+
+    pub fn delete_unstable(this: *This, index: usize) void {
+        this.len -= 1;
+        this.buf[index] = this.buf[this.len];
+    }
 };
 
 test "set_range can modify through end of string" {
-    var s = SmallString.init_copy("hello");
+    var s = SmallString.from_slice("hello");
 
     s.set_range(2, "llo");
 
@@ -201,7 +194,7 @@ test "append_slice exact capacity" {
 }
 
 test "pop" {
-    var s = SmallString.init_copy("abc");
+    var s = SmallString.from_slice("abc");
 
     try std.testing.expectEqual(@as(u8, 'c'), s.pop().?);
     try std.testing.expectEqualStrings("ab", s.const_slice());
@@ -212,7 +205,7 @@ test "pop" {
 }
 
 test "delete" {
-    var s = SmallString.init_copy("abcde");
+    var s = SmallString.from_slice("abcde");
 
     s.delete(0);
     try std.testing.expectEqualStrings("bcde", s.const_slice());
@@ -229,7 +222,7 @@ test "delete" {
 }
 
 test "delete_range" {
-    var s = SmallString.init_copy("abcdefghij");
+    var s = SmallString.from_slice("abcdefghij");
 
     s.delete_range(3, 2);
     try std.testing.expectEqualStrings("abcfghij", s.const_slice());
@@ -254,7 +247,7 @@ test "delete_range" {
 }
 
 test "delete_unstable" {
-    var s = SmallString.init_copy("abcde");
+    var s = SmallString.from_slice("abcde");
 
     s.delete_unstable(1);
     try std.testing.expectEqualStrings("aecd", s.const_slice());

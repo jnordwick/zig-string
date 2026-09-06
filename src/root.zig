@@ -58,13 +58,21 @@ pub const String = extern union {
     }
 
     /// create a new string from a slice
-    pub fn init_copy(alloc: Allocator, str: []const u8) !This {
+    pub fn from_slice(alloc: Allocator, str: []const u8) !This {
         std.debug.assert(str.len < std.math.maxInt(usize) - 1);
         const slen: usize = @intCast(str.len);
         if (slen <= SmallString.buf_size) {
-            return .{ .small = SmallString.init_copy(str) };
+            return .{ .small = SmallString.from_slice(str) };
         } else {
-            return .{ .large = try LargeString.init_copy(alloc, str, slen * 2) };
+            return .{ .large = try LargeString.from_slice(alloc, str, slen * 2) };
+        }
+    }
+
+    pub fn replace(this: *This, alloc: Allocator, other: *const String) !This {
+        if (!this.is_small()) {
+            this.large.replace(alloc, other);
+        } else {
+            this.* = String.init_slice(alloc, other.const_slice());
         }
     }
 
@@ -101,9 +109,9 @@ pub const String = extern union {
     pub fn substr(this: *const This, alloc: Allocator, offset: usize, len: usize) StringError!String {
         const sub: []const u8 = this.const_subslice(offset, len);
         if (len <= SmallString.buf_size) {
-            return .{ .small = SmallString.init_copy(sub) };
+            return .{ .small = SmallString.from_slice(sub) };
         } else {
-            return .{ .large = try LargeString.init_copy(alloc, sub, 0) };
+            return .{ .large = try LargeString.from_slice(alloc, sub, 0) };
         }
     }
 
@@ -290,7 +298,7 @@ test "init_copy small strings" {
     };
 
     for (cases) |expected| {
-        var s = try String.init_copy(testing.allocator, expected);
+        var s = try String.from_slice(testing.allocator, expected);
         defer s.deinit(testing.allocator);
 
         try testing.expect(s.is_small());
@@ -301,7 +309,7 @@ test "init_copy small strings" {
 test "init_copy spills at 24 bytes" {
     const expected = "123456789012345678901234";
 
-    var s = try String.init_copy(testing.allocator, expected);
+    var s = try String.from_slice(testing.allocator, expected);
     defer s.deinit(testing.allocator);
 
     try testing.expect(!s.is_small());
@@ -341,9 +349,9 @@ test "append_char across SSO boundary" {
 }
 
 test "append small to small" {
-    var s = try String.init_copy(testing.allocator, "hello");
+    var s = try String.from_slice(testing.allocator, "hello");
     defer if (!s.is_small()) s.large.deinit(testing.allocator);
-    var other = try String.init_copy(testing.allocator, " world");
+    var other = try String.from_slice(testing.allocator, " world");
     defer if (!other.is_small()) other.large.deinit(testing.allocator);
 
     try s.append(testing.allocator, &other);
@@ -354,9 +362,9 @@ test "append small to small" {
 test "append causing spill" {
     const n1 = "123456789012345678";
     const n2 = "90123456";
-    var s = try String.init_copy(testing.allocator, n1);
+    var s = try String.from_slice(testing.allocator, n1);
     defer if (!s.is_small()) s.large.deinit(testing.allocator);
-    var other = try String.init_copy(testing.allocator, n2);
+    var other = try String.from_slice(testing.allocator, n2);
     defer if (!other.is_small()) other.large.deinit(testing.allocator);
 
     try s.append(testing.allocator, &other);
@@ -367,9 +375,9 @@ test "append causing spill" {
 test "append large to large" {
     const aaa = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const bbb = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    var s = try String.init_copy(testing.allocator, aaa);
+    var s = try String.from_slice(testing.allocator, aaa);
     defer s.deinit(testing.allocator);
-    var other = try String.init_copy(testing.allocator, bbb);
+    var other = try String.from_slice(testing.allocator, bbb);
     defer other.deinit(testing.allocator);
 
     try s.append(testing.allocator, &other);
@@ -390,7 +398,7 @@ test "reserve crosses SSO boundary" {
 
 test "reserve does not shrink" {
     const input = "123456789012345678901234";
-    var s = try String.init_copy(
+    var s = try String.from_slice(
         testing.allocator,
         input,
     );
@@ -403,7 +411,7 @@ test "reserve does not shrink" {
 }
 
 test "into_large" {
-    var s = try String.init_copy(testing.allocator, "hello");
+    var s = try String.from_slice(testing.allocator, "hello");
     defer s.large.deinit(testing.allocator);
 
     try testing.expect(s.is_small());
@@ -414,7 +422,7 @@ test "into_large" {
 }
 
 test "into_large is no-op for large string" {
-    var s = try String.init_copy(
+    var s = try String.from_slice(
         testing.allocator,
         "123456789012345678901234",
     );
@@ -430,7 +438,7 @@ test "into_large is no-op for large string" {
 
 test "into_small converts large string" {
     const a = "123456789012345678901234";
-    var s = try String.init_copy(std.testing.allocator, a);
+    var s = try String.from_slice(std.testing.allocator, a);
     defer s.deinit(std.testing.allocator);
 
     try testing.expectEqual(@as(usize, 24), s.length());
@@ -443,7 +451,7 @@ test "into_small converts large string" {
 }
 
 test "into_small rejects strings larger than SSO" {
-    var s = try String.init_copy(
+    var s = try String.from_slice(
         testing.allocator,
         "123456789012345678901234",
     );
@@ -456,7 +464,7 @@ test "into_small rejects strings larger than SSO" {
 }
 
 test "get and set character" {
-    var s = try String.init_copy(testing.allocator, "hello");
+    var s = try String.from_slice(testing.allocator, "hello");
     defer s.deinit(testing.allocator);
 
     try testing.expectEqual('h', s.get_char(0));
@@ -468,7 +476,7 @@ test "get and set character" {
 }
 
 test "set_range" {
-    var s = try String.init_copy(testing.allocator, "hello world");
+    var s = try String.from_slice(testing.allocator, "hello world");
     defer s.deinit(testing.allocator);
 
     s.set_range(6, "there");
@@ -477,10 +485,10 @@ test "set_range" {
 }
 
 test "set using String" {
-    var s = try String.init_copy(testing.allocator, "hello world");
+    var s = try String.from_slice(testing.allocator, "hello world");
     defer s.deinit(testing.allocator);
 
-    var other = try String.init_copy(testing.allocator, "there");
+    var other = try String.from_slice(testing.allocator, "there");
     defer other.deinit(testing.allocator);
 
     s.set(6, &other);
@@ -489,7 +497,7 @@ test "set using String" {
 }
 
 test "pop" {
-    var s = try String.init_copy(testing.allocator, "hello");
+    var s = try String.from_slice(testing.allocator, "hello");
     defer s.deinit(testing.allocator);
 
     try testing.expectEqual('o', s.pop());
@@ -500,7 +508,7 @@ test "pop" {
 }
 
 test "delete" {
-    var s = try String.init_copy(testing.allocator, "abcdef");
+    var s = try String.from_slice(testing.allocator, "abcdef");
     defer s.deinit(testing.allocator);
 
     s.delete(2);
@@ -512,7 +520,7 @@ test "delete" {
 }
 
 test "delete out of range is no-op" {
-    var s = try String.init_copy(testing.allocator, "hello");
+    var s = try String.from_slice(testing.allocator, "hello");
     defer s.deinit(testing.allocator);
 
     s.delete(100);
@@ -520,7 +528,7 @@ test "delete out of range is no-op" {
 }
 
 test "delete_range" {
-    var s = try String.init_copy(testing.allocator, "abcdefghij");
+    var s = try String.from_slice(testing.allocator, "abcdefghij");
     defer s.deinit(testing.allocator);
 
     s.delete_range(2, 3);
@@ -529,7 +537,7 @@ test "delete_range" {
 }
 
 test "delete_range to end" {
-    var s = try String.init_copy(testing.allocator, "abcdefghij");
+    var s = try String.from_slice(testing.allocator, "abcdefghij");
     defer s.deinit(testing.allocator);
 
     s.delete_range(6, 100);
@@ -538,7 +546,7 @@ test "delete_range to end" {
 }
 
 test "delete_range zero length" {
-    var s = try String.init_copy(testing.allocator, "abcdefghij");
+    var s = try String.from_slice(testing.allocator, "abcdefghij");
     defer s.deinit(testing.allocator);
 
     s.delete_range(4, 0);
@@ -547,7 +555,7 @@ test "delete_range zero length" {
 }
 
 test "delete_range past end is no-op" {
-    var s = try String.init_copy(testing.allocator, "abcdefghij");
+    var s = try String.from_slice(testing.allocator, "abcdefghij");
     defer s.deinit(testing.allocator);
 
     s.delete_range(100, 5);
@@ -556,7 +564,7 @@ test "delete_range past end is no-op" {
 }
 
 test "delete_range does not convert large to small" {
-    var s = try String.init_copy(
+    var s = try String.from_slice(
         testing.allocator,
         "123456789012345678901234",
     );
@@ -569,14 +577,14 @@ test "delete_range does not convert large to small" {
 }
 
 test "subslice" {
-    var s = try String.init_copy(testing.allocator, "hello world");
+    var s = try String.from_slice(testing.allocator, "hello world");
     defer s.deinit(testing.allocator);
 
     try testing.expectEqualStrings("world", s.const_subslice(6, 5));
 }
 
 test "substr creates independent string" {
-    var s = try String.init_copy(testing.allocator, "hello world");
+    var s = try String.from_slice(testing.allocator, "hello world");
     defer s.deinit(testing.allocator);
 
     var sub = try s.substr(testing.allocator, 6, 5);
@@ -591,13 +599,13 @@ test "substr creates independent string" {
 }
 
 test "eql" {
-    var a = try String.init_copy(testing.allocator, "hello");
+    var a = try String.from_slice(testing.allocator, "hello");
     defer a.deinit(testing.allocator);
 
-    var b = try String.init_copy(testing.allocator, "hello");
+    var b = try String.from_slice(testing.allocator, "hello");
     defer b.deinit(testing.allocator);
 
-    var c = try String.init_copy(testing.allocator, "Hello");
+    var c = try String.from_slice(testing.allocator, "Hello");
     defer c.deinit(testing.allocator);
 
     try testing.expect(a.eql(&b));
@@ -605,13 +613,13 @@ test "eql" {
 }
 
 test "eql across representations" {
-    var small = try String.init_copy(
+    var small = try String.from_slice(
         testing.allocator,
         "12345678901234567890123",
     );
     defer small.deinit(testing.allocator);
 
-    var large = try String.init_copy(
+    var large = try String.from_slice(
         testing.allocator,
         "12345678901234567890123",
     );
@@ -626,7 +634,7 @@ test "eql across representations" {
 }
 
 test "transform" {
-    var s = try String.init_copy(testing.allocator, "Hello World");
+    var s = try String.from_slice(testing.allocator, "Hello World");
     defer s.deinit(testing.allocator);
 
     s.transform(std.ascii.toLower);
@@ -635,7 +643,7 @@ test "transform" {
 }
 
 test "format" {
-    var s = try String.init_copy(testing.allocator, "hello");
+    var s = try String.from_slice(testing.allocator, "hello");
     defer s.deinit(testing.allocator);
 
     const formatted = try std.fmt.allocPrint(
@@ -648,10 +656,10 @@ test "format" {
 }
 
 test "hash equality" {
-    var a = try String.init_copy(testing.allocator, "hello");
+    var a = try String.from_slice(testing.allocator, "hello");
     defer a.deinit(testing.allocator);
 
-    var b = try String.init_copy(testing.allocator, "hello");
+    var b = try String.from_slice(testing.allocator, "hello");
     defer b.deinit(testing.allocator);
 
     const h32 = String.HashContext32{};
@@ -665,11 +673,11 @@ test "full hash" {
     var map: StringHashMap(u32) = .init(testing.allocator);
     defer map.deinit();
 
-    try map.put(try String.init_copy(testing.allocator, "one"), 1);
-    try map.put(try String.init_copy(testing.allocator, "two"), 2);
-    try map.put(try String.init_copy(testing.allocator, "three"), 3);
+    try map.put(try String.from_slice(testing.allocator, "one"), 1);
+    try map.put(try String.from_slice(testing.allocator, "two"), 2);
+    try map.put(try String.from_slice(testing.allocator, "three"), 3);
 
-    try testing.expect(map.get(try String.init_copy(testing.allocator, "one")).? == 1);
-    try testing.expect(map.get(try String.init_copy(testing.allocator, "two")).? == 2);
-    try testing.expect(map.get(try String.init_copy(testing.allocator, "three")).? == 3);
+    try testing.expect(map.get(try String.from_slice(testing.allocator, "one")).? == 1);
+    try testing.expect(map.get(try String.from_slice(testing.allocator, "two")).? == 2);
+    try testing.expect(map.get(try String.from_slice(testing.allocator, "three")).? == 3);
 }

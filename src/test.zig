@@ -34,7 +34,7 @@ const talloc = tt.allocator;
 test "small copy" {
     const h = "hello";
     const hs: []const u8 = h[0..];
-    var ss = SmallString.init_copy(hs);
+    var ss = SmallString.from_slice(hs);
     try tt.expectEqual(@as(u8, @intCast(5)), ss.len);
     try tt.expectEqualSlices(u8, hs, ss.const_slice());
 }
@@ -42,7 +42,7 @@ test "small copy" {
 test "large copy" {
     const h = "hello";
     const hs: []const u8 = h[0..];
-    var ss = try LargeString.init_copy(talloc, hs, 100);
+    var ss = try LargeString.from_slice(talloc, hs, 100);
     defer ss.deinit(talloc);
     try tt.expectEqualSlices(u8, hs, ss.const_slice());
 }
@@ -50,7 +50,7 @@ test "large copy" {
 test "small to large" {
     const h = "hello";
     const hs: []const u8 = h[0..];
-    var ss = SmallString.init_copy(hs);
+    var ss = SmallString.from_slice(hs);
 
     var large_str = try LargeString.from_small(talloc, &ss, ss.len * 2);
     defer large_str.deinit(talloc);
@@ -59,7 +59,7 @@ test "small to large" {
 
 test "small into large into small" {
     const h = "hello";
-    var ss = try String.init_copy(talloc, h);
+    var ss = try String.from_slice(talloc, h);
 
     try ss.into_large(talloc);
     try tt.expect(!ss.is_small());
@@ -74,7 +74,7 @@ test "small into large into small" {
 
 test "delete range" {
     const h = "hello";
-    var ss = try String.init_copy(talloc, h);
+    var ss = try String.from_slice(talloc, h);
 
     const h1 = "hllo";
     const h2 = "ho";

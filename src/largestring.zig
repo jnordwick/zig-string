@@ -5,6 +5,7 @@ const builtin = @import("builtin");
 const low_mask = @import("root.zig").String.low_mask;
 const SmallString = @import("smallstring.zig").SmallString;
 const StringError = @import("root.zig").StringError;
+const String = @import("root.zig").String;
 
 comptime {
     if (builtin.target.cpu.arch.endian() != .little)
@@ -61,7 +62,7 @@ pub const LargeString = extern struct {
     }
 
     /// create new LargeString with initial value. cap is only a suggestion
-    pub fn init_copy(alloc: Allocator, str: []const u8, cap: usize) !This {
+    pub fn from_slice(alloc: Allocator, str: []const u8, cap: usize) !This {
         var this: This = undefined;
         const slen: usize = @intCast(str.len);
         const alloc_amt: usize = @max(slen, cap);
@@ -73,12 +74,16 @@ pub const LargeString = extern struct {
         return this;
     }
 
+    pub fn to_string(this: This) String {
+        return @bitCast(this);
+    }
+
     /// convert a small string into a large allocated string
     /// str: the small string to convert
     /// cap: the initial capacity for the allocation. see also init_copy for a description of cap
     pub fn from_small(alloc: Allocator, str: *const SmallString, cap: usize) !This {
         const str_slice = str.const_slice();
-        return init_copy(alloc, str_slice, cap);
+        return from_slice(alloc, str_slice, cap);
     }
 
     /// returns a subslice of the string. if the string is ever converted from small to large or has to be
@@ -224,7 +229,7 @@ test "LargeString init" {
 }
 
 test "LargeString init_copy" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "hello world",
         32,
@@ -238,7 +243,7 @@ test "LargeString init_copy" {
 test "LargeString init_copy allocates enough for string" {
     const input = "this is longer than the requested capacity";
 
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         input,
         1,
@@ -250,7 +255,7 @@ test "LargeString init_copy allocates enough for string" {
 }
 
 test "LargeString from_small" {
-    var small = SmallString.init_copy("hello world");
+    var small = SmallString.from_slice("hello world");
 
     var s = try LargeString.from_small(
         std.testing.allocator,
@@ -330,7 +335,7 @@ test "LargeString reserve" {
 }
 
 test "LargeString reserve preserves contents" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "preserve me",
         32,
@@ -343,7 +348,7 @@ test "LargeString reserve preserves contents" {
 }
 
 test "LargeString pop" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "abc",
         32,
@@ -357,7 +362,7 @@ test "LargeString pop" {
 }
 
 test "LargeString clear" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "hello world",
         64,
@@ -378,7 +383,7 @@ test "LargeString clear" {
 }
 
 test "LargeString get and set" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "abcdef",
         32,
@@ -393,7 +398,7 @@ test "LargeString get and set" {
 }
 
 test "LargeString set_range" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "abcdefghij",
         32,
@@ -413,7 +418,7 @@ test "LargeString set_range" {
 }
 
 test "LargeString subslice" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "abcdefghij",
         32,
@@ -427,7 +432,7 @@ test "LargeString subslice" {
 }
 
 test "LargeString const_subslice" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "abcdefghij",
         32,
@@ -439,7 +444,7 @@ test "LargeString const_subslice" {
 }
 
 test "LargeString delete" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "abcde",
         32,
@@ -461,7 +466,7 @@ test "LargeString delete" {
 }
 
 test "LargeString delete_range" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "abcdefghij",
         32,
@@ -494,7 +499,7 @@ test "LargeString delete_range" {
 }
 
 test "LargeString delete_unstable" {
-    var s = try LargeString.init_copy(
+    var s = try LargeString.from_slice(
         std.testing.allocator,
         "abcde",
         32,
