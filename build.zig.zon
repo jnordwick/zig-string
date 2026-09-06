@@ -1,9 +1,8 @@
 .{ // zig string
-    .name = .zig_string,
+    .name = .zstring,
     .version = "0.0.2",
     .minimum_zig_version = "0.16.0",
-    .fingerprint = 0xd2ee692e588f053c,
-
+    .fingerprint = 0xfa084311fce6ba47,
     .dependencies = .{},
     .paths = .{
         "build.zig",

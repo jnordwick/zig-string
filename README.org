@@ -1,4 +1,8 @@
 * Introduction
+
+UPDATE: I had to change the name because I was having problems
+with the dash in the package name with zig tooling.
+
 This is a simple string library that implements an in situ buffer for
 the small string optimization. It can store up to 23 bytes without
 spill into an external allocation.

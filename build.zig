@@ -5,14 +5,14 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // The module
-    _ = b.addModule("zig-string", .{
+    _ = b.addModule("zstring", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     const lib = b.addLibrary(.{
-        .name = "zig-string",
+        .name = "zstring",
         .linkage = .static,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/root.zig"),
